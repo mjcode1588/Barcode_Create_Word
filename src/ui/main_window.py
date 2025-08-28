@@ -14,6 +14,7 @@ from src.services.excel_service import ExcelService
 from src.services.word_service import WordService
 from src.services.barcode_generator import BarcodeGenerator
 from src.services.file_service import FileService
+from src.ui.category_dialog import CategoryDialog
 
 class WorkerThread(QThread):
     """백그라운드 작업 스레드"""
@@ -223,6 +224,12 @@ class MainWindow(QMainWindow):
         # 도구 메뉴
         tools_menu = menubar.addMenu("도구")
         
+        manage_categories_action = QAction("종류 관리...", self)
+        manage_categories_action.triggered.connect(self.manage_categories)
+        tools_menu.addAction(manage_categories_action)
+        
+        tools_menu.addSeparator()
+        
         open_output_action = QAction("출력 폴더 열기", self)
         open_output_action.triggered.connect(self.open_output_directory)
         tools_menu.addAction(open_output_action)
@@ -314,8 +321,10 @@ class MainWindow(QMainWindow):
             # 기존 상품 찾아서 교체
             old_product = None
             for i, existing_product in enumerate(self.products):
-                if (existing_product.name == product.name and 
-                    existing_product.category == product.category):
+                if (
+                    existing_product.name == product.name and 
+                    existing_product.category == product.category
+                ):
                     old_product = existing_product
                     self.products[i] = product
                     break
@@ -414,8 +423,8 @@ class MainWindow(QMainWindow):
         if file_path:
             try:
                 # 현재 상품 목록을 선택한 위치에 저장
-                temp_excel_service = ExcelService(file_path)
-                if temp_excel_service.save_products(self.products):
+                # temp_excel_service = ExcelService(file_path)
+                if self.excel_service.save_products(self.products, file_path):
                     self.log_message(f"Excel 파일 저장 완료: {file_path}")
                     QMessageBox.information(self, "완료", "Excel 파일이 저장되었습니다.")
                 else:
@@ -608,3 +617,30 @@ class MainWindow(QMainWindow):
     def edit_product(self, product: Product):
         """상품 수정 모드로 전환"""
         self.product_widget.edit_product(product)
+
+    def manage_categories(self):
+        """종류 관리 다이얼로그 열기"""
+        if not self.excel_service:
+            QMessageBox.warning(self, "오류", "Excel 서비스가 초기화되지 않았습니다.")
+            return
+        
+        dialog = CategoryDialog(self.excel_service, self)
+        dialog.categories_updated.connect(self._on_categories_updated)
+        dialog.exec()
+
+    def _on_categories_updated(self):
+        """종류 변경 시 UI 업데이트"""
+        self.log_message("종류 목록이 변경되어 데이터를 새로고침합니다.")
+        
+        # 1. ProductWidget의 종류 목록 업데이트
+        categories = self.excel_service.get_categories()
+        self.product_widget.set_categories(categories)
+        
+        # 2. 현재 상품 목록 다시 로드 (변경된 종류 이름 반영)
+        self.products = self.excel_service.read_products()
+        
+        # 3. 상품 테이블 업데이트
+        self.update_products_table()
+        
+        # 4. 수정 중이던 상품 폼 초기화
+        self.product_widget.clear_form()

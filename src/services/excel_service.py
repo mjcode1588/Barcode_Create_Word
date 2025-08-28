@@ -70,14 +70,19 @@ class ExcelService:
                 return
             
             type_ws = wb["type"]
-            self.categories = []
             
-            # 데이터 읽기 (2번째 행부터)
+            # 기존 메모리의 카테고리와 파일의 카테고리를 병합
+            # 이렇게 하면 UI에서 임시로 추가된 카테고리가 사라지지 않음
+            file_categories = []
             for row in type_ws.iter_rows(min_row=2, values_only=True):
-                if row[0] is not None:  # 빈 행이 아니면
+                if row[0] is not None:
                     category = str(row[0]).strip()
-                    if category and category not in self.categories:
-                        self.categories.append(category)
+                    if category:
+                        file_categories.append(category)
+            
+            # 현재 메모리 카테고리와 파일 카테고리를 합친 후 중복 제거
+            merged_categories = self.categories + file_categories
+            self.categories = sorted(list(set(merged_categories)), key=merged_categories.index)
             
             wb.close()
             print(f"종류 목록 로드됨: {self.categories}")
@@ -90,6 +95,80 @@ class ExcelService:
         """종류 목록 반환"""
         return self.categories.copy()
     
+    def is_category_in_use(self, category: str) -> bool:
+        """해당 종류가 상품에서 사용 중인지 확인"""
+        products = self.read_products()
+        return any(p.category == category for p in products)
+
+    def update_category(self, old_category: str, new_category: str) -> bool:
+        """종류 수정 (연관된 모든 상품 정보 포함)"""
+        if not new_category or new_category in self.categories:
+            return False
+        
+        try:
+            wb = load_workbook(self.file_path)
+            
+            # 1. type 시트에서 종류 수정
+            type_ws = wb["type"]
+            for row in type_ws.iter_rows(min_row=2):
+                if row[0].value == old_category:
+                    row[0].value = new_category
+                    break
+            
+            # 2. product 시트에서 해당 종류를 사용하는 모든 상품 수정
+            if "product" in wb.sheetnames:
+                product_ws = wb["product"]
+                for row in product_ws.iter_rows(min_row=2):
+                    if row[2].value == old_category:
+                        row[2].value = new_category
+            
+            wb.save(self.file_path)
+            wb.close()
+            
+            # 3. 메모리의 종류 목록 업데이트
+            self.categories = [new_category if c == old_category else c for c in self.categories]
+            print(f"종류 수정 완료: '{old_category}' -> '{new_category}'")
+            return True
+            
+        except Exception as e:
+            print(f"종류 수정 실패: {e}")
+            return False
+
+    def delete_category(self, category: str) -> bool:
+        """종류 삭제"""
+        if self.is_category_in_use(category):
+            print(f"'{category}' 종류는 현재 사용 중이므로 삭제할 수 없습니다.")
+            return False
+        
+        try:
+            wb = load_workbook(self.file_path)
+            type_ws = wb["type"]
+            
+            # 삭제할 행 찾기
+            row_to_delete = None
+            for row_idx, row in enumerate(type_ws.iter_rows(min_row=2), start=2):
+                if row[0].value == category:
+                    row_to_delete = row_idx
+                    break
+            
+            # 행 삭제
+            if row_to_delete:
+                type_ws.delete_rows(row_to_delete)
+            
+            wb.save(self.file_path)
+            wb.close()
+            
+            # 메모리에서 종류 삭제
+            if category in self.categories:
+                self.categories.remove(category)
+            
+            print(f"종류 삭제 완료: '{category}'")
+            return True
+            
+        except Exception as e:
+            print(f"종류 삭제 실패: {e}")
+            return False
+
     def add_category(self, category: str) -> bool:
         """새 종류 추가"""
         try:
@@ -173,12 +252,12 @@ class ExcelService:
             print(f"Excel 파일 읽기 실패: {e}")
             return []
     
-    def save_products(self, products: List[Product]) -> bool:
+    def save_products(self, products: List[Product], temp_file_path:str) -> bool:
         """상품 목록을 product 시트에 저장 (Create/Update)"""
         try:
             # 기존 파일이 있으면 로드, 없으면 새로 생성
-            if os.path.exists(self.file_path):
-                wb = load_workbook(self.file_path)
+            if os.path.exists(temp_file_path):
+                wb = load_workbook(temp_file_path)
             else:
                 wb = Workbook()
             
@@ -207,20 +286,33 @@ class ExcelService:
                     product.copy
                 ])
             
-            # type 시트가 없으면 생성
-            if "type" not in wb.sheetnames:
-                type_ws = wb.create_sheet("type")
-                type_ws.append(["종류"])
-                
-                # 기본 종류 추가
-                for category in self.categories:
-                    type_ws.append([category])
+            # type 시트 처리: 기존 시트 삭제 후 현재 종류 목록으로 새로 생성
+            if "type" in wb.sheetnames:
+                wb.remove(wb["type"])
             
+            type_ws = wb.create_sheet("type")
+            
+            # 헤더 추가
+            type_headers = ["종류"]
+            type_ws.append(type_headers)
+            
+            # 헤더 스타일 설정
+            cell = type_ws.cell(row=1, column=1)
+            cell.font = cell.font.copy(bold=True)
+            
+            # 현재 종류 목록 저장
+            for category in self.categories:
+                type_ws.append([category])
+            
+
+            if "Sheet" in wb.sheetnames:
+                wb.remove(wb["Sheet"])
+
             # 파일 저장
-            wb.save(self.file_path)
+            wb.save(temp_file_path)
             wb.close()
             
-            print(f"Excel 파일 저장 완료: {self.file_path} ({len(products)}개 상품)")
+            print(f"Excel 파일 저장 완료: {temp_file_path} ({len(products)}개 상품)")
             return True
             
         except Exception as e:
@@ -318,7 +410,39 @@ class ExcelService:
                 return "ITEM"  # 기본값
 
     def generate_barcode_numbers(self, products: List[Product]) -> List[Tuple[str, str, str, str]]:
-        """바코드 번호 생성 (한글 종류명을 영문 코드로 변환)"""
+        """바코드 번호 생성 (한글 종류명을 영문 코드로 변환) 및 새 종류 자동 저장"""
+        # 상품 목록에서 새로운 종류를 찾아 파일에 미리 저장
+        product_categories = sorted(list(set(p.category for p in products)))
+        new_categories = [cat for cat in product_categories if cat not in self.categories]
+
+        if new_categories:
+            try:
+                wb = load_workbook(self.file_path)
+                
+                if "type" not in wb.sheetnames:
+                    type_ws = wb.create_sheet("type")
+                    type_ws.append(["종류"])
+                    # 헤더 스타일 설정
+                    cell = type_ws.cell(row=1, column=1)
+                    cell.font = cell.font.copy(bold=True)
+                else:
+                    type_ws = wb["type"]
+                
+                for category in new_categories:
+                    type_ws.append([category])
+                
+                wb.save(self.file_path)
+                wb.close()
+                
+                # 메모리 내 종류 목록 업데이트
+                self.categories.extend(new_categories)
+                print(f"새 종류 자동 저장됨: {new_categories}")
+
+            except Exception as e:
+                print(f"새 종류 자동 저장 실패: {e}")
+                # 실패하더라도 메모리에 추가하여 바코드 생성은 계속 진행
+                self.categories.extend(new_categories)
+
         category_counters = {}
         items = []
         
@@ -327,13 +451,14 @@ class ExcelService:
             if product.category not in category_counters:
                 category_counters[product.category] = 1
             
-            # 종류의 인덱스를 사용 (1-based). 예: PPON-1 000001 -> PPON-1000001
-            # 만약 종류가 아직 categories 목록에 없으면 목록에 추가해서 인덱스를 생성합니다.
-            if product.category not in self.categories:
-                self.categories.append(product.category)
-
             # 1-based 인덱스
-            category_index = self.categories.index(product.category) + 1
+            try:
+                category_index = self.categories.index(product.category) + 1
+            except ValueError:
+                # 위의 로직으로 인해 이 경우는 거의 없지만, 안전장치로 추가
+                if product.category not in self.categories:
+                    self.categories.append(product.category)
+                category_index = self.categories.index(product.category) + 1
 
             # 종류별 바코드 생성: PPON-{종류인덱스}{6자리순번} 형태
             item_number = str(category_counters[product.category]).zfill(6)

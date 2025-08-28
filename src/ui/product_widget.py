@@ -140,8 +140,8 @@ class ProductWidget(QWidget):
         except ValueError as e:
             self.show_status(f"오류: {str(e)}", "error")
     
-    def clear_inputs(self):
-        """입력 필드 초기화"""
+    def clear_form(self):
+        """입력 폼 초기화 (내부 로직 및 외부 호출용)"""
         self.name_edit.clear()
         self.price_edit.clear()
         self.category_combo.setCurrentText("")
@@ -149,6 +149,11 @@ class ProductWidget(QWidget):
         self.current_product = None
         self.add_button.setEnabled(True)
         self.update_button.setEnabled(False)
+        self.status_label.setText("")
+
+    def clear_inputs(self):
+        """입력 필드 초기화 (사용자 액션)"""
+        self.clear_form()
         self.show_status("입력 필드가 초기화되었습니다.", "info")
     
     def _create_product_from_inputs(self) -> Product:
