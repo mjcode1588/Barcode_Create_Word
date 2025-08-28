@@ -3,7 +3,7 @@ import sys
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QSplitter, QTableWidget, QTableWidgetItem, QPushButton,
                                QLabel, QProgressBar, QMessageBox, QFileDialog, QMenu,
-                               QHeaderView, QTextEdit, QGroupBox, QGridLayout)
+                               QHeaderView, QTextEdit, QGroupBox, QGridLayout, QCheckBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QFont
 
@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.products = []
+        self.selected_products = []
         self.worker_thread = None
         
         # 서비스 초기화
@@ -133,15 +134,25 @@ class MainWindow(QMainWindow):
         right_panel = QWidget()
         right_layout = QVBoxLayout()
         
+        # 상품 목록 헤더 (라벨 + 전체 선택 체크박스)
+        table_header_layout = QHBoxLayout()
+        table_header_layout.addWidget(QLabel("상품 목록"))
+        
+        self.select_all_checkbox = QCheckBox("전체 선택")
+        table_header_layout.addWidget(self.select_all_checkbox)
+        table_header_layout.addStretch()
+        right_layout.addLayout(table_header_layout)
+        
         # 상품 목록 테이블
         self.products_table = QTableWidget()
-        self.products_table.setColumnCount(5)
-        self.products_table.setHorizontalHeaderLabels(["상품명", "가격", "종류", "복사", "작업"])
+        self.products_table.setColumnCount(6)
+        self.products_table.setHorizontalHeaderLabels(["", "상품명", "가격", "종류", "복사", "관리"])
         self.products_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.products_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.products_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.products_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.products_table.setColumnWidth(0, 30)
         self.products_table.setAlternatingRowColors(True)
         
-        right_layout.addWidget(QLabel("상품 목록"))
         right_layout.addWidget(self.products_table)
         
         # 제어 버튼들
@@ -261,8 +272,9 @@ class MainWindow(QMainWindow):
             # 바코드 생성기 초기화
             self.barcode_generator = BarcodeGenerator()
             
-            # Excel 서비스 초기화 (자동으로 data/items.xlsx 로드)
-            self.excel_service = ExcelService()
+            # Excel 서비스 초기화
+            data_path = self.file_service.get_data_path()
+            self.excel_service = ExcelService(data_path)
             
             # 프로그램 시작 시 Excel 파일에서 상품 목록 자동 로드
             self.load_products_from_excel()
@@ -287,6 +299,7 @@ class MainWindow(QMainWindow):
             products = self.excel_service.read_products()
             if products:
                 self.products = products
+                self.selected_products.clear()
                 self.update_products_table()
                 self.log_message(f"Excel 파일에서 {len(products)}개 상품을 자동 로드했습니다.")
             else:
@@ -353,6 +366,8 @@ class MainWindow(QMainWindow):
                 # Excel 파일에서 상품 삭제
                 if self.excel_service.delete_product(product):
                     self.products.remove(product)
+                    if product in self.selected_products:
+                        self.selected_products.remove(product)
                     self.update_products_table()
                     self.log_message(f"상품 삭제 및 Excel 저장 완료: {product.name}")
                 else:
@@ -374,6 +389,7 @@ class MainWindow(QMainWindow):
                 # Excel 파일 초기화
                 if self.excel_service.save_products([]):
                     self.products.clear()
+                    self.selected_products.clear()
                     self.update_products_table()
                     self.log_message("모든 상품 삭제 및 Excel 초기화 완료")
                 else:
@@ -402,6 +418,7 @@ class MainWindow(QMainWindow):
                     # 현재 Excel 서비스 교체
                     self.excel_service = temp_excel_service
                     self.products = products
+                    self.selected_products.clear()
                     self.update_products_table()
                     self.log_message(f"새 Excel 파일에서 {len(products)}개 상품, {len(categories)}개 종류를 불러왔습니다.")
                 else:
@@ -449,12 +466,12 @@ class MainWindow(QMainWindow):
     
     def start_generation(self):
         """라벨 생성 시작"""
-        if not self.products:
-            QMessageBox.warning(self, "경고", "생성할 상품이 없습니다.")
+        if not self.selected_products:
+            QMessageBox.warning(self, "경고", "생성할 상품을 선택해주세요.")
             return
         
         reply = QMessageBox.question(self, "라벨 생성", 
-                                   f"{len(self.products)}개 상품에 대해 라벨을 생성하시겠습니까?",
+                                   f"{len(self.selected_products)}개 상품에 대해 라벨을 생성하시겠습니까?",
                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if reply == QMessageBox.StandardButton.Yes:
@@ -470,7 +487,7 @@ class MainWindow(QMainWindow):
             
             # 작업 스레드 시작
             self.worker_thread = WorkerThread(
-                self.excel_service, self.barcode_generator, self.word_service, self.products
+                self.excel_service, self.barcode_generator, self.word_service, self.selected_products
             )
             
             self.worker_thread.progress_updated.connect(self.progress_bar.setValue)
@@ -572,29 +589,42 @@ class MainWindow(QMainWindow):
         """시그널 연결"""
         self.product_widget.productAdded.connect(self.add_product)
         self.product_widget.productUpdated.connect(self.update_product)
+        self.select_all_checkbox.stateChanged.connect(self._on_select_all_changed)
     
     def update_products_table(self):
         """상품 테이블 업데이트"""
         self.products_table.setRowCount(len(self.products))
         
         for row, product in enumerate(self.products):
+            # 선택 체크박스
+            checkbox = QCheckBox()
+            checkbox.setChecked(product in self.selected_products)
+            checkbox.stateChanged.connect(lambda state, p=product: self._on_product_selected(state, p))
+            
+            cell_widget = QWidget()
+            layout = QHBoxLayout(cell_widget)
+            layout.addWidget(checkbox)
+            layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.setContentsMargins(0, 0, 0, 0)
+            self.products_table.setCellWidget(row, 0, cell_widget)
+            
             # 상품명
             name_item = QTableWidgetItem(product.name)
-            self.products_table.setItem(row, 0, name_item)
+            self.products_table.setItem(row, 1, name_item)
             
             # 가격
             price_item = QTableWidgetItem(product.formatted_price)
-            self.products_table.setItem(row, 1, price_item)
+            self.products_table.setItem(row, 2, price_item)
             
             # 종류
             category_item = QTableWidgetItem(product.category)
-            self.products_table.setItem(row, 2, category_item)
+            self.products_table.setItem(row, 3, category_item)
             
             # 복사
             copy_item = QTableWidgetItem("예" if product.copy else "아니오")
-            self.products_table.setItem(row, 3, copy_item)
+            self.products_table.setItem(row, 4, copy_item)
             
-            # 작업 버튼
+            # 관리 버튼
             button_widget = QWidget()
             button_layout = QHBoxLayout()
             button_layout.setContentsMargins(2, 2, 2, 2)
@@ -612,8 +642,50 @@ class MainWindow(QMainWindow):
             button_layout.addWidget(delete_button)
             button_widget.setLayout(button_layout)
             
-            self.products_table.setCellWidget(row, 4, button_widget)
-    
+            self.products_table.setCellWidget(row, 5, button_widget)
+        
+        self._update_select_all_checkbox_state()
+
+    def _on_select_all_changed(self, state):
+        """'전체 선택' 체크박스 상태 변경 시 호출"""
+        if self.select_all_checkbox.isTristate():
+            self.select_all_checkbox.setTristate(False)
+        
+        if state == Qt.CheckState.Checked.value:
+            self.selected_products = list(self.products)
+        else:
+            self.selected_products.clear()
+        self.update_products_table()
+
+    def _on_product_selected(self, state, product):
+        """개별 상품 체크박스 상태 변경 시 호출"""
+        if state == Qt.CheckState.Checked.value:
+            if product not in self.selected_products:
+                self.selected_products.append(product)
+        else:
+            if product in self.selected_products:
+                self.selected_products.remove(product)
+        self._update_select_all_checkbox_state()
+
+    def _update_select_all_checkbox_state(self):
+        """'전체 선택' 체크박스 상태를 동기화"""
+        self.select_all_checkbox.blockSignals(True)
+        
+        if not self.products:
+            self.select_all_checkbox.setTristate(False)
+            self.select_all_checkbox.setCheckState(Qt.CheckState.Unchecked)
+        elif len(self.selected_products) == len(self.products):
+            self.select_all_checkbox.setTristate(False)
+            self.select_all_checkbox.setCheckState(Qt.CheckState.Checked)
+        elif not self.selected_products:
+            self.select_all_checkbox.setTristate(False)
+            self.select_all_checkbox.setCheckState(Qt.CheckState.Unchecked)
+        else:
+            self.select_all_checkbox.setTristate(True)
+            self.select_all_checkbox.setCheckState(Qt.CheckState.PartiallyChecked)
+            
+        self.select_all_checkbox.blockSignals(False)
+
     def edit_product(self, product: Product):
         """상품 수정 모드로 전환"""
         self.product_widget.edit_product(product)
@@ -638,6 +710,7 @@ class MainWindow(QMainWindow):
         
         # 2. 현재 상품 목록 다시 로드 (변경된 종류 이름 반영)
         self.products = self.excel_service.read_products()
+        self.selected_products.clear()
         
         # 3. 상품 테이블 업데이트
         self.update_products_table()

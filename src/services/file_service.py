@@ -1,61 +1,53 @@
 import os
 import shutil
 from typing import List
+import sys
+
+def get_base_path():
+    """
+    실행 환경(개발용 또는 PyInstaller 번들)에 따라 기본 경로를 반환합니다.
+    """
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # PyInstaller로 번들된 경우, _MEIPASS는 임시 폴더의 경로입니다.
+        return sys._MEIPASS
+    else:
+        # 일반적인 개발 환경인 경우, 이 파일(src/services/file_service.py)을 기준으로
+        # 프로젝트 루트는 두 단계 위입니다.
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 class FileService:
     """파일 관리 서비스"""
     
-    def __init__(self, base_dir: str = "."):
-        self.base_dir = base_dir
-        self.template_dir = os.path.join(base_dir, "templates")
-        self.data_dir = os.path.join(base_dir, "data")
-        self.output_dir = os.path.join(base_dir, "output")
+    def __init__(self):
+        self.base_dir = get_base_path()
+        self.template_dir = os.path.join(self.base_dir, "templates")
+        self.data_dir = os.path.join(self.base_dir, "data")
+        # 출력 디렉토리는 번들 내부가 아닌 현재 작업 디렉토리에 생성합니다.
+        self.output_dir = os.path.join(os.path.abspath("."), "output")
     
     def ensure_directories(self):
-        """필요한 디렉토리들 생성"""
-        directories = [self.template_dir, self.data_dir, self.output_dir]
-        for directory in directories:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-                print(f"디렉토리 생성: {directory}")
+        """출력 디렉토리 생성 확인"""
+        # data 및 templates 디렉토리는 번들에 포함되므로 출력 디렉토리만 확인합니다.
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            print(f"디렉토리 생성: {self.output_dir}")
     
     def get_template_path(self, template_name: str = "3677.docx") -> str:
         """템플릿 파일 경로 반환"""
-        # 먼저 templates 디렉토리에서 찾기
         template_path = os.path.join(self.template_dir, template_name)
-        if os.path.exists(template_path):
-            return template_path
-        
-        # 현재 디렉토리에서 찾기
-        current_path = os.path.join(self.base_dir, template_name)
-        if os.path.exists(current_path):
-            return current_path
-        
-        # 상위 디렉토리에서 찾기
-        parent_path = os.path.join(os.path.dirname(self.base_dir), template_name)
-        if os.path.exists(parent_path):
-            return parent_path
-        
-        raise FileNotFoundError(f"템플릿 파일을 찾을 수 없습니다: {template_name}")
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"템플릿 파일을 찾을 수 없습니다: {template_path}")
+        return template_path
     
     def get_data_path(self, data_name: str = "items.xlsx") -> str:
         """데이터 파일 경로 반환"""
-        # 먼저 data 디렉토리에서 찾기
         data_path = os.path.join(self.data_dir, data_name)
-        if os.path.exists(data_path):
-            return data_path
-        
-        # 현재 디렉토리에서 찾기
-        current_path = os.path.join(self.base_dir, data_name)
-        if os.path.exists(current_path):
-            return current_path
-        
-        # 상위 디렉토리에서 찾기
-        parent_path = os.path.join(os.path.dirname(self.base_dir), data_name)
-        if os.path.exists(parent_path):
-            return parent_path
-        
-        raise FileNotFoundError(f"데이터 파일을 찾을 수 없습니다: {data_name}")
+        if not os.path.exists(data_path):
+            # 데이터 파일이 없을 경우, 기본 파일을 생성하도록 유도할 수 있습니다.
+            # 여기서는 ExcelService가 이 역할을 하므로 경로만 반환합니다.
+            # raise FileNotFoundError(f"데이터 파일을 찾을 수 없습니다: {data_path}")
+            pass
+        return data_path
     
     def cleanup_output(self):
         """출력 디렉토리 정리"""
