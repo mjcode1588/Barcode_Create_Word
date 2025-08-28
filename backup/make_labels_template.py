@@ -41,6 +41,7 @@ print(f"Excel 파일 컬럼: {headers}")
 # 종류별 바코드 번호 생성
 category_counters = {}
 items = []
+categories = []
 
 # 데이터 읽기 (2번째 행부터)
 for row in ws.iter_rows(min_row=2, values_only=True):
@@ -55,10 +56,16 @@ for row in ws.iter_rows(min_row=2, values_only=True):
     # 종류별 카운터 관리
     if category not in category_counters:
         category_counters[category] = 1
-    
-    # 종류별 바코드 생성: PPON-{종류}000001 형태 (전체 대문자)
+
+    # 카테고리 인덱스 관리: categories 리스트에 없으면 추가
+    if category not in categories:
+        categories.append(category)
+
+    category_index = categories.index(category) + 1  # 1-based index
+
+    # 종류별 바코드 생성: PPON-{종류인덱스}{6자리순번} 형태 (전체 대문자)
     item_number = str(category_counters[category]).zfill(6)  # 6자리 순번
-    barcode_number = f"PPON-{category}{item_number}".upper()
+    barcode_number = f"PPON-{category_index}{item_number}".upper()
     
     # 복사 플래그에 따라 개수 결정
     if copy_flag:
@@ -73,7 +80,8 @@ for row in ws.iter_rows(min_row=2, values_only=True):
 
 print(f"총 {len(items)}개 상품 로드됨")
 for category, count in category_counters.items():
-    print(f"  {category}: {count-1}개")
+    idx = categories.index(category) + 1 if category in categories else "?"
+    print(f"  {category} (index:{idx}): {count-1}개")
 
 # 바코드 이미지 생성 (GS1-128, 고화질)
 unique_codes = set()

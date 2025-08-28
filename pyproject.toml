@@ -1,0 +1,13 @@
+[project]
+name = "barcode-create-word"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openpyxl>=3.1.5",
+    "pillow>=11.3.0",
+    "pyqt6>=6.9.1",
+    "python-barcode>=0.16.1",
+    "python-docx>=1.2.0",
+]
