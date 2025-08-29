@@ -32,6 +32,10 @@ class FileService:
             os.makedirs(self.output_dir)
             print(f"디렉토리 생성: {self.output_dir}")
     
+    def get_template_directory(self) -> str:
+        """템플릿 디렉토리 경로 반환"""
+        return self.template_dir
+
     def get_template_path(self, template_name: str = "3677.docx") -> str:
         """템플릿 파일 경로 반환"""
         template_path = os.path.join(self.template_dir, template_name)

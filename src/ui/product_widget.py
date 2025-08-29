@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QValidator, QIntValidator
 from src.models.product import Product
-from typing import List, Dict
+from typing import List
 
 class PriceValidator(QValidator):
     """가격 입력 검증기 (숫자만 허용)"""
@@ -31,27 +31,31 @@ class ProductWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_product = None
-        self.categories_map: Dict[str, int] = {}  # 종류 목록 (이름 -> ID)
+        self.categories = []  # 종류 목록
         self.setup_ui()
     
     def setup_ui(self):
         """UI 구성"""
         layout = QVBoxLayout()
         
+        # 제목
         title_label = QLabel("상품 정보 입력")
         title_label.setProperty("class", "title")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_label)
         
+        # 상품 정보 입력 그룹
         product_group = QGroupBox("상품 정보")
         product_layout = QGridLayout()
         
+        # 상품명
         self.name_label = QLabel("상품명:")
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("상품명을 입력하세요")
         product_layout.addWidget(self.name_label, 0, 0)
         product_layout.addWidget(self.name_edit, 0, 1)
         
+        # 가격
         self.price_label = QLabel("가격:")
         self.price_edit = QLineEdit()
         self.price_edit.setPlaceholderText("숫자만 입력 가능")
@@ -59,6 +63,7 @@ class ProductWidget(QWidget):
         product_layout.addWidget(self.price_label, 1, 0)
         product_layout.addWidget(self.price_edit, 1, 1)
         
+        # 제품 ID (정수)
         self.product_id_label = QLabel("제품ID:")
         self.product_id_spin = QSpinBox()
         self.product_id_spin.setRange(0, 999999999)
@@ -66,16 +71,18 @@ class ProductWidget(QWidget):
         product_layout.addWidget(self.product_id_label, 2, 0)
         product_layout.addWidget(self.product_id_spin, 2, 1)
         
+        # 종류 (콤보박스로 변경)
         self.category_label = QLabel("종류:")
         self.category_combo = QComboBox()
-        self.category_combo.setEditable(True)
-        self.category_combo.setPlaceholderText("종류를 선택하거나 입력하세요")
+        self.category_combo.setEditable(True)  # 직접 입력도 가능
+        self.category_combo.setPlaceholderText("종류를 선택하세요")
         product_layout.addWidget(self.category_label, 3, 0)
         product_layout.addWidget(self.category_combo, 3, 1)
         
         product_group.setLayout(product_layout)
         layout.addWidget(product_group)
         
+        # 버튼 그룹
         button_layout = QHBoxLayout()
         
         self.add_button = QPushButton("상품 추가")
@@ -94,6 +101,7 @@ class ProductWidget(QWidget):
         
         layout.addLayout(button_layout)
         
+        # 상태 표시
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet("color: #666666; font-style: italic;")
@@ -101,13 +109,12 @@ class ProductWidget(QWidget):
         
         self.setLayout(layout)
     
-    def set_categories(self, categories: Dict[str, int]):
-        """종류 목록 설정 (이름 -> ID 맵)"""
-        self.categories_map = categories
+    def set_categories(self, categories: List[str]):
+        """종류 목록 설정"""
+        self.categories = categories
         self.category_combo.clear()
-        for name, cat_id in categories.items():
-            self.category_combo.addItem(name, cat_id)
-        print(f"종류 목록 설정됨: {list(categories.keys())}")
+        self.category_combo.addItems(categories)
+        print(f"종류 목록 설정됨: {categories}")
     
     def add_product(self):
         """상품 추가"""
@@ -128,7 +135,6 @@ class ProductWidget(QWidget):
         try:
             updated_product = self._create_product_from_inputs()
             if updated_product:
-                # When updating, we need to pass the original product for lookup
                 self.productUpdated.emit(updated_product)
                 self.clear_inputs()
                 self.current_product = None
@@ -144,6 +150,7 @@ class ProductWidget(QWidget):
         self.price_edit.clear()
         self.category_combo.setCurrentText("")
         self.product_id_spin.setValue(0)
+        # self.copy_checkbox.setChecked(False)
         self.current_product = None
         self.add_button.setEnabled(True)
         self.update_button.setEnabled(False)
@@ -160,9 +167,9 @@ class ProductWidget(QWidget):
         price = self.price_edit.text().strip()
         typename = self.category_combo.currentText().strip()
         product_id = int(self.product_id_spin.value())
-        
-        type_id = self.category_combo.currentData()
 
+        # copy = self.copy_checkbox.isChecked()  # 현재 복사 기능 미사용
+        
         if not name:
             raise ValueError("상품명을 입력해주세요.")
         
@@ -172,32 +179,22 @@ class ProductWidget(QWidget):
         if not typename:
             raise ValueError("종류를 입력해주세요.")
         
-        if type_id is None:
-            # This happens if the user typed a new category.
-            # We can either block this or handle it by creating a new category.
-            # For now, we will check if it exists in our map.
-            if typename in self.categories_map:
-                type_id = self.categories_map[typename]
-            else:
-                # A new category name was entered.
-                # We'll assign a temporary new ID or handle it upstream.
-                # For now, let's assign a placeholder ID like -1 and let the service handle it.
-                type_id = -1 # Placeholder for a new category
-        
-        return Product(name=name, price=price, type_name=typename, product_id=product_id, type_id=type_id)
+        # Product 생성: product_id 포함, copy 기본 False
+        return Product(name=name, price=price, type_name=typename, product_id=product_id)
     
     def edit_product(self, product: Product):
         """상품 정보로 입력 필드 채우기 (수정 모드)"""
         self.current_product = product
         self.name_edit.setText(product.name)
         self.price_edit.setText(product.price)
-        self.product_id_spin.setValue(product.product_id or 0)
-        
-        index = self.category_combo.findData(product.type_id)
-        if index != -1:
-            self.category_combo.setCurrentIndex(index)
-        else:
-            self.category_combo.setCurrentText(product.type_name)
+        # product 객체에 product_id가 있으면 설정
+        try:
+            self.product_id_spin.setValue(int(getattr(product, "product_id", 0) or 0))
+        except Exception:
+            self.product_id_spin.setValue(0)
+        # category attribute 이름이 모델에 따라 다를 수 있으므로 안전하게 처리
+        self.category_combo.setCurrentText(getattr(product, "category", getattr(product, "type_name", "")))
+        # self.copy_checkbox.setChecked(getattr(product, "copy", False))
         
         self.add_button.setEnabled(False)
         self.update_button.setEnabled(True)
@@ -207,6 +204,7 @@ class ProductWidget(QWidget):
         """상태 메시지 표시"""
         self.status_label.setText(message)
         
+        # 상태에 따른 스타일 적용
         if status_type == "success":
             self.status_label.setStyleSheet("color: #107c10; font-weight: bold;")
         elif status_type == "error":

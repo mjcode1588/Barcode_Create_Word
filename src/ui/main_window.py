@@ -16,6 +16,7 @@ from src.services.word_service import WordService
 from src.services.barcode_generator import BarcodeGenerator
 from src.services.file_service import FileService
 from src.ui.category_dialog import CategoryDialog
+from src.ui.settings_dialog import SettingsDialog
 
 class WorkerThread(QThread):
     """백그라운드 작업 스레드"""
@@ -25,12 +26,12 @@ class WorkerThread(QThread):
     finished = pyqtSignal(bool, str)
     
 
-    def __init__(self, excel_service, barcode_generator, word_service, products):
+    def __init__(self, excel_service, word_service, products, settings):
         super().__init__()
         self.excel_service = excel_service
-        self.barcode_generator = barcode_generator
         self.word_service = word_service
         self.products = products
+        self.settings = settings
         self.data_path = None
     
     def run(self):
@@ -38,14 +39,24 @@ class WorkerThread(QThread):
             self.status_updated.emit("바코드 번호 생성 중...")
             self.progress_updated.emit(10)
             
-            items = self.excel_service.generate_barcode_numbers(self.products)
+            # Create a new BarcodeGenerator with the options from the settings dialog
+            barcode_generator = BarcodeGenerator(self.settings['barcode_options'])
+
+            items_to_generate = []
+            for product in self.products:
+                quantity = self.settings['quantities'].get(product.product_id, 1)
+                for _ in range(quantity):
+                    items_to_generate.append(product)
+
+            items = self.excel_service.generate_barcode_numbers(items_to_generate)
             self.progress_updated.emit(30)
             
             self.status_updated.emit("바코드 이미지 생성 중...")
-            barcode_images = self.barcode_generator.generate_barcodes_for_products(items)
+            barcode_images = barcode_generator.generate_barcodes_for_products(items)
             self.progress_updated.emit(60)
             
             self.status_updated.emit("Word 문서 생성 중...")
+            self.word_service.template_file = self.settings['template']
             files_created = self.word_service.generate_label_documents(items, barcode_images)
             self.progress_updated.emit(90)
             
@@ -71,7 +82,6 @@ class MainWindow(QMainWindow):
         self.file_service = FileService()
         self.excel_service = None
         self.word_service = None
-        self.barcode_generator = None
         
         self.setup_ui()
         self.setup_services()
@@ -145,7 +155,9 @@ class MainWindow(QMainWindow):
         self.products_table.setAlternatingRowColors(True)
         self.products_table.setMinimumHeight(400)
         self.products_table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-        
+        self.products_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.products_table.customContextMenuRequested.connect(self.show_table_context_menu)
+
         right_layout.addWidget(self.products_table)
         
         control_layout = QHBoxLayout()
@@ -252,8 +264,6 @@ class MainWindow(QMainWindow):
             
             template_path = self.file_service.get_template_path()
             self.word_service = WordService(template_path)
-            
-            self.barcode_generator = BarcodeGenerator()
             
             self.data_path = self.file_service.get_data_path()
             self.excel_service = ExcelService(self.data_path)
@@ -454,14 +464,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "경고", "생성할 상품을 선택해주세요.")
             return
         
-        reply = QMessageBox.question(self, "라벨 생성", 
-                                   f"{len(self.selected_products)}개 상품에 대해 라벨을 생성하시겠습니까?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        templates = [self.file_service.get_template_path(f) for f in os.listdir(self.file_service.get_template_directory()) if f.endswith('.docx')]
+        dialog = SettingsDialog(templates, self.selected_products, self)
         
-        if reply == QMessageBox.StandardButton.Yes:
-            self.generate_labels()
+        if dialog.exec():
+            settings = dialog.get_settings()
+            self.generate_labels(settings)
     
-    def generate_labels(self):
+    def generate_labels(self, settings):
         """라벨 생성 실행"""
         try:
             self.generate_button.setEnabled(False)
@@ -469,7 +479,7 @@ class MainWindow(QMainWindow):
             self.progress_bar.setValue(0)
             
             self.worker_thread = WorkerThread(
-                self.excel_service, self.barcode_generator, self.word_service, self.selected_products
+                self.excel_service, self.word_service, self.selected_products, settings
             )
             
             self.worker_thread.progress_updated.connect(self.progress_bar.setValue)
@@ -691,6 +701,22 @@ class MainWindow(QMainWindow):
         
         self.product_widget.clear_form()
 
+    def show_table_context_menu(self, pos):
+        """상품 테이블 컨텍스트 메뉴 표시"""
+        item = self.products_table.itemAt(pos)
+        if not item:
+            return
+
+        row = item.row()
+        product = self.products[row]
+
+        menu = QMenu()
+        change_id_action = menu.addAction("제품ID 변경...")
+        action = menu.exec(self.products_table.mapToGlobal(pos))
+
+        if action == change_id_action:
+            self.change_product_id(product)
+
     def change_product_id(self, product: Product):
         """제품ID 변경 (입력 다이얼로그) — 중복 시 교환 확인"""
         try:
@@ -709,7 +735,7 @@ class MainWindow(QMainWindow):
 
         if existing and existing is not product:
             resp = QMessageBox.question(
-                self,
+                self, 
                 "제품ID 중복",
                 f"제품ID {new_id}은(는) 이미 '{existing.name}'에서 사용 중입니다.\n"
                 f"두 상품의 제품ID를 서로 교환하시겠습니까?",

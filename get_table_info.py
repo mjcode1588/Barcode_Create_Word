@@ -11,12 +11,12 @@ def get_table_size(docx_path):
         document = docx.Document(docx_path)
         if not document.tables:
             print("No tables found in the document.")
-            return
+            return 0
 
         table = document.tables[0]
         num_rows = len(table.rows)
         num_cols = len(table.columns)
-        print(f"The table has {num_rows} rows and {num_cols} columns.")
+        return num_cols * num_rows
 
     except Exception as e:
         print(f"An error occurred: {e}")

@@ -1,24 +1,27 @@
 import os
 from barcode import Code128
 from barcode.writer import ImageWriter
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict
 from io import BytesIO
 from PIL import Image
 
 class BarcodeGenerator:
     """GS1-128 바코드 생성 클래스 (메모리 기반)"""
     
-    def __init__(self):
-        # 바코드 설정
-        self.barcode_width = 1.2
-        self.barcode_height = 0.6
-        self.dpi = 300
-        self.module_width = 0.2
-        self.module_height = 15.0
-        self.quiet_zone = 6.5
-        self.text_distance = 5.0
-        self.font_size = 10
-    
+    def __init__(self, options: Optional[Dict] = None):
+        if options is None:
+            options = {}
+            
+        # 바코드 설정 (기본값)
+        self.writer_options = {
+            'module_width': options.get('module_width', 0.2),
+            'module_height': options.get('module_height', 15.0),
+            'quiet_zone': options.get('quiet_zone', 6.5),
+            'text_distance': options.get('text_distance', 5.0),
+            'font_size': options.get('font_size', 10),
+            'dpi': options.get('dpi', 300)
+        }
+
     def generate_barcode_in_memory(self, code: str, category: str) -> BytesIO:
         """바코드 이미지를 메모리에 생성"""
         try:
@@ -36,20 +39,14 @@ class BarcodeGenerator:
                 return None
             
             # GS1-128 바코드 생성 (고화질 설정)
-            writer = ImageWriter()
-            writer.dpi = self.dpi
-            writer.module_width = self.module_width
-            writer.module_height = self.module_height
-            writer.quiet_zone = self.quiet_zone
-            writer.text_distance = self.text_distance
-            writer.font_size = self.font_size
+            writer = ImageWriter(format='PNG')
             
             # Code128로 GS1-128 형식 생성
             barcode = Code128(code, writer=writer)
             
             # 메모리에 이미지 생성
             img_buffer = BytesIO()
-            barcode.write(img_buffer)
+            barcode.write(img_buffer, self.writer_options)
             img_buffer.seek(0)
             
             print(f"바코드 생성 완료: {code} ({category})")

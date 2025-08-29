@@ -25,6 +25,7 @@ class WordService:
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
             
+            
             # 새 문서 생성 (템플릿 복사)
             page_doc = Document(self.template_file)
             
@@ -142,6 +143,24 @@ class WordService:
         except Exception as e:
             print(f"라벨 페이지 생성 실패: {e}")
             return False
+    
+    def get_table_max_size(self):
+        """
+        Prints the number of rows and columns of the first table in a .docx file.
+        """
+        try:
+            document = Document(self.template_file)
+            if not document.tables:
+                print("No tables found in the document.")
+                return 0
+
+            table = document.tables[0]
+            num_rows = len(table.rows)
+            num_cols = len(table.columns)
+            return num_cols * num_rows
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
     
     def generate_label_documents(self, items: List[Tuple[str, str, str, str]], 
                                 barcode_images: dict, output_dir: str = "output") -> int:
