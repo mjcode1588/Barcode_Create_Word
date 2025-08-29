@@ -45,9 +45,9 @@ try:
         # QApplication 생성
         app = QApplication(sys.argv)
         force_light_theme(app)
-        app.setApplicationName("바코드 라벨 생성기")
+        app.setApplicationName("삐삐의 바코드 라벨 생성기")
         app.setApplicationVersion("1.0")
-        app.setOrganizationName("Barcode Label Generator")
+        app.setOrganizationName("PP of Barcode Label Generator")
 
         # 고해상도 디스플레이 지원 (PyQt6에서는 기본적으로 활성화됨)
         # 필요한 경우에만 설정

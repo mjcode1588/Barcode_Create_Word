@@ -66,14 +66,16 @@ class ProductWidget(QWidget):
         self.category_label = QLabel("종류:")
         self.category_combo = QComboBox()
         self.category_combo.setEditable(True)  # 직접 입력도 가능
-        self.category_combo.setPlaceholderText("종류를 선택하거나 입력하세요")
+        self.category_combo.setPlaceholderText("종류를 선택하세요")
         product_layout.addWidget(self.category_label, 2, 0)
         product_layout.addWidget(self.category_combo, 2, 1)
         
-        # 복사 여부
-        self.copy_checkbox = QCheckBox("복사 (78개 생성)")
-        self.copy_checkbox.setToolTip("체크하면 한 페이지에 78개의 라벨을 생성합니다")
-        product_layout.addWidget(self.copy_checkbox, 3, 0, 1, 2)
+        # self.product_id_label = QLabel("종류:")
+        # self.category_combo = QComboBox()
+        # self.category_combo.setEditable(True)  # 직접 입력도 가능
+        # self.category_combo.setPlaceholderText("종류를 선택하세요")
+        # product_layout.addWidget(self.category_label, 2, 0)
+        # product_layout.addWidget(self.category_combo, 2, 1)
         
         product_group.setLayout(product_layout)
         layout.addWidget(product_group)
@@ -145,7 +147,7 @@ class ProductWidget(QWidget):
         self.name_edit.clear()
         self.price_edit.clear()
         self.category_combo.setCurrentText("")
-        self.copy_checkbox.setChecked(False)
+        # self.copy_checkbox.setChecked(False)
         self.current_product = None
         self.add_button.setEnabled(True)
         self.update_button.setEnabled(False)
@@ -161,7 +163,7 @@ class ProductWidget(QWidget):
         name = self.name_edit.text().strip()
         price = self.price_edit.text().strip()
         category = self.category_combo.currentText().strip()
-        copy = self.copy_checkbox.isChecked()
+        # copy = self.copy_checkbox.isChecked()
         
         if not name:
             raise ValueError("상품명을 입력해주세요.")
@@ -179,8 +181,8 @@ class ProductWidget(QWidget):
         self.current_product = product
         self.name_edit.setText(product.name)
         self.price_edit.setText(product.price)
-        self.category_combo.setCurrentText(product.category)
-        self.copy_checkbox.setChecked(product.copy)
+        self.category_combo.setCurrentText(product.type_name)
+        # self.copy_checkbox.setChecked(product.copy)
         
         self.add_button.setEnabled(False)
         self.update_button.setEnabled(True)

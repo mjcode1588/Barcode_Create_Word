@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
         # 상품 목록 테이블
         self.products_table = QTableWidget()
         self.products_table.setColumnCount(6)
-        self.products_table.setHorizontalHeaderLabels(["", "상품명", "가격", "종류", "복사", "관리"])
+        self.products_table.setHorizontalHeaderLabels(["", "상품명", "가격", "종류", "바코드번호", "관리"])
         self.products_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.products_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.products_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
@@ -622,12 +622,13 @@ class MainWindow(QMainWindow):
             self.products_table.setItem(row, 2, price_item)
             
             # 종류
-            category_item = QTableWidgetItem(product.category)
+            category_item = QTableWidgetItem(product.type_name)
             self.products_table.setItem(row, 3, category_item)
             
-            # 복사
-            copy_item = QTableWidgetItem("예" if product.copy else "아니오")
-            self.products_table.setItem(row, 4, copy_item)
+            # 바코드번호
+            item_number = str(product.product_id).zfill(6)
+            barcode_item = QTableWidgetItem(f"{product.type_id}{item_number}" if product.type_id and product.product_id else "")
+            self.products_table.setItem(row, 4, barcode_item)
             
             # 관리 버튼
             button_widget = QWidget()
