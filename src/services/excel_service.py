@@ -341,7 +341,7 @@ class ExcelService:
                     products[i] = new_product
                     break
             
-            return self.save_products(products)
+            return self.save_products(products, self.file_path)
         except Exception as e:
             print(f"상품 수정 실패: {e}")
             return False

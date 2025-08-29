@@ -3,12 +3,13 @@ import sys
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QSplitter, QTableWidget, QTableWidgetItem, QPushButton,
                                QLabel, QProgressBar, QMessageBox, QFileDialog, QMenu,
-                               QHeaderView, QTextEdit, QGroupBox, QGridLayout, QCheckBox)
+                               QHeaderView, QTextEdit, QGroupBox, QGridLayout, QCheckBox,
+                               QSizePolicy)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QFont
 
 from src.ui.product_widget import ProductWidget
-from src.ui.styles import MAIN_STYLE, SUCCESS_STYLE, WARNING_STYLE
+from src.ui.styles import MAIN_STYLE, SUCCESS_STYLE, WARNING_STYLE, EDIT_STYLE, DELETE_STYLE
 from src.models.product import Product
 from src.services.excel_service import ExcelService
 from src.services.word_service import WordService
@@ -23,12 +24,14 @@ class WorkerThread(QThread):
     status_updated = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
     
+
     def __init__(self, excel_service, barcode_generator, word_service, products):
         super().__init__()
         self.excel_service = excel_service
         self.barcode_generator = barcode_generator
         self.word_service = word_service
         self.products = products
+        self.data_path = None
     
     def run(self):
         try:
@@ -152,6 +155,8 @@ class MainWindow(QMainWindow):
         self.products_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.products_table.setColumnWidth(0, 30)
         self.products_table.setAlternatingRowColors(True)
+        self.products_table.setMinimumHeight(400)  # 최소 높이 설정
+        self.products_table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)  # 세로 방향으로 확장
         
         right_layout.addWidget(self.products_table)
         
@@ -273,8 +278,8 @@ class MainWindow(QMainWindow):
             self.barcode_generator = BarcodeGenerator()
             
             # Excel 서비스 초기화
-            data_path = self.file_service.get_data_path()
-            self.excel_service = ExcelService(data_path)
+            self.data_path = self.file_service.get_data_path()
+            self.excel_service = ExcelService(self.data_path)
             
             # 프로그램 시작 시 Excel 파일에서 상품 목록 자동 로드
             self.load_products_from_excel()
@@ -387,7 +392,7 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 # Excel 파일 초기화
-                if self.excel_service.save_products([]):
+                if self.excel_service.save_products([],self.data_path):
                     self.products.clear()
                     self.selected_products.clear()
                     self.update_products_table()
@@ -629,14 +634,15 @@ class MainWindow(QMainWindow):
             button_layout = QHBoxLayout()
             button_layout.setContentsMargins(2, 2, 2, 2)
             
-            edit_button = QPushButton("수정")
+            edit_button = QPushButton("✏️ 수정")
             edit_button.clicked.connect(lambda checked, p=product: self.edit_product(p))
-            edit_button.setMaximumWidth(60)
+            edit_button.setMaximumWidth(70)
+            edit_button.setStyleSheet(EDIT_STYLE)
             
-            delete_button = QPushButton("삭제")
+            delete_button = QPushButton("🗑️ 삭제")
             delete_button.clicked.connect(lambda checked, p=product: self.delete_product(p))
-            delete_button.setMaximumWidth(60)
-            delete_button.setStyleSheet(WARNING_STYLE)
+            delete_button.setMaximumWidth(70)
+            delete_button.setStyleSheet(DELETE_STYLE)
             
             button_layout.addWidget(edit_button)
             button_layout.addWidget(delete_button)

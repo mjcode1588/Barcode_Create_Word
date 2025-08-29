@@ -63,13 +63,9 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked {
     background-color: #0078d4;
     border-color: #0078d4;
-}
-
-QCheckBox::indicator:checked::after {
-    content: "✓";
-    color: white;
-    font-weight: bold;
-    font-size: 12px;
+    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSJ3aGl0ZSIgZD0iTTkgMTYuMTdMNC44MyAxMmwtMS40MiAxLjQxTDkgMTkgMjEgN2wtMS40MS0xLjQxeiIvPjwvc3ZnPg==);
+    background-repeat: no-repeat;
+    background-position: center;
 }
 
 QTableWidget {
@@ -187,6 +183,38 @@ QPushButton {
     padding: 8px 16px;
     border-radius: 4px;
     font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #b32d01;
+}
+"""
+
+EDIT_STYLE = """
+QPushButton {
+    background-color: #0078d4;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 9pt;
+}
+
+QPushButton:hover {
+    background-color: #106ebe;
+}
+"""
+
+DELETE_STYLE = """
+QPushButton {
+    background-color: #d83b01;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 9pt;
 }
 
 QPushButton:hover {

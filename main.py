@@ -11,14 +11,40 @@ current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
 try:
-    from PyQt6.QtWidgets import QApplication
+
+    from PyQt6.QtGui import QPalette, QColor
     from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
     from src.ui.main_window import MainWindow
+
+    def force_light_theme(app: QApplication):
+        # 1) 시스템 스타일 대신 Fusion 고정
+        app.setStyle("Fusion")
+
+        # 2) 밝은 팔레트 직접 지정 (필요한 역할만 골라 설정)
+        pal = QPalette()
+
+        pal.setColor(QPalette.ColorRole.Window, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))           # 입력창/표 바탕
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#f6f6f6"))
+        pal.setColor(QPalette.ColorRole.Text, QColor("#000000"))           # 일반 텍스트
+        pal.setColor(QPalette.ColorRole.WindowText, QColor("#000000"))     # 라벨 등
+        pal.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.ButtonText, QColor("#000000"))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor("#0078d4"))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffdc"))
+        pal.setColor(QPalette.ColorRole.ToolTipText, QColor("#000000"))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor("#666666"))
+
+        app.setPalette(pal)
+
 
     def main():
         """메인 함수"""
         # QApplication 생성
         app = QApplication(sys.argv)
+        force_light_theme(app)
         app.setApplicationName("바코드 라벨 생성기")
         app.setApplicationVersion("1.0")
         app.setOrganizationName("Barcode Label Generator")
