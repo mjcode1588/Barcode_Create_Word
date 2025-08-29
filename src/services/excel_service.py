@@ -1,5 +1,5 @@
 from openpyxl import load_workbook, Workbook
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from src.models.product import Product
 import os
 
@@ -8,8 +8,8 @@ class ExcelService:
     
     def __init__(self, file_path: str = "data/items.xlsx"):
         self.file_path = file_path
-        self.categories = []  # TYPE 목록 저장
-        self.categories_dict = {}
+        self.category_name_to_id: Dict[str, int] = {}
+        self.category_id_to_name: Dict[int, str] = {}
         self._ensure_file_exists()
         self._load_categories()  # 시작 시 TYPE 목록 로드
     
@@ -22,38 +22,27 @@ class ExcelService:
         """기본 Excel 파일 생성 (product와 type 시트 포함)"""
         wb = Workbook()
         
-        # product 시트 생성
         product_ws = wb.active
         product_ws.title = "product"
-        
-        # product 시트 헤더 추가
-        product_headers = ["PRODUCT", "PRICE", "TYPE", "PRODUCT_ID"]
+        product_headers = ["PRODUCT", "PRICE", "TYPE_ID", "PRODUCT_ID"]
         product_ws.append(product_headers)
         
-        # product 시트 헤더 스타일 설정
         for col in range(1, len(product_headers) + 1):
             cell = product_ws.cell(row=1, column=col)
             cell.font = cell.font.copy(bold=True)
         
-        # type 시트 생성
         type_ws = wb.create_sheet("type")
-        
-        # type 시트 헤더 추가
         type_headers = ["TYPE", "TYPE_ID"]
         type_ws.append(type_headers)
         
-        # type 시트 헤더 스타일 설정
         for col in range(1, len(type_headers) + 1):
             cell = type_ws.cell(row=1, column=col)
             cell.font = cell.font.copy(bold=True)
 
-
-        # 기본 TYPE 데이터 추가
         default_categories = ["폰스트랩", "리본 키링", "미니 키링", "키링", "팔찌", "꽃갈피", "모양", "부착"]
         for idx, type_name in enumerate(default_categories):
             type_ws.append([type_name, idx])
         
-        # 파일 저장
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
         wb.save(self.file_path)
         wb.close()
@@ -64,46 +53,45 @@ class ExcelService:
         try:
             wb = load_workbook(self.file_path)
             
-            # type 시트가 있는지 확인
             if "type" not in wb.sheetnames:
                 print("type 시트가 없습니다. 기본 TYPE를 사용합니다.")
-                self.categories = ["폰스트랩", "리본 키링", "미니 키링", "키링", "팔찌", "꽃갈피", "모양", "부착"]
-                self.categories_dict = dict(self.categories, zip(range(len(self.categories))))
+                default_categories = ["폰스트랩", "리본 키링", "미니 키링", "키링", "팔찌", "꽃갈피", "모양", "부착"]
+                self.category_name_to_id = {name: i for i, name in enumerate(default_categories)}
+                self.category_id_to_name = {i: name for i, name in enumerate(default_categories)}
                 wb.close()
                 return
             
             type_ws = wb["type"]
             
-            # 기존 메모리의 카테고리와 파일의 카테고리를 병합
-            # 이렇게 하면 UI에서 임시로 추가된 카테고리가 사라지지 않음
-            file_categories = []
-            categories_idx = []
+            self.category_name_to_id = {}
+            self.category_id_to_name = {}
             for row in type_ws.iter_rows(min_row=2, values_only=True):
-                if row[0] is not None:
+                if row and row[0] is not None and row[1] is not None:
                     type_name = str(row[0]).strip()
-                    if type_name:
-                        file_categories.append(type_name)
-                if row[1] is not None:
-                    idx = row[1]
-                    if type_name:
-                        categories_idx.append(idx)
-            #  파일 카테고리로 덮어 쓰기
-             
-            self.categories = file_categories
-            self.categories_dict = dict(zip(categories_idx,file_categories))
+                    try:
+                        type_id = int(row[1])
+                        if type_name:
+                            self.category_name_to_id[type_name] = type_id
+                            self.category_id_to_name[type_id] = type_name
+                    except (ValueError, TypeError):
+                        continue
 
             wb.close()
-            print(f"TYPE 목록 로드됨: {self.categories}")
-            print(f"TYPE DICT 로드됨: {self.categories_idx}")
+            print(f"TYPE 목록 로드됨: {list(self.category_name_to_id.keys())}")
             
         except Exception as e:
             print(f"TYPE 목록 로드 실패: {e}")
-            self.categories = ["폰스트랩", "리본 키링", "미니 키링", "키링", "팔찌", "꽃갈피", "모양", "부착"]
+            default_categories = ["폰스트랩", "리본 키링", "미니 키링", "키링", "팔찌", "꽃갈피", "모양", "부착"]
+            self.category_name_to_id = {name: i for i, name in enumerate(default_categories)}
+            self.category_id_to_name = {i: name for i, name in enumerate(default_categories)}
     
-    def get_categories(self) -> List[str]:
-        """TYPE 목록 반환"""
-        return self.categories.copy()
-    
+    def get_categories(self) -> Dict[str, int]:
+        """TYPE 목록 반환 (이름 -> ID 맵)"""
+        return self.category_name_to_id.copy()
+
+    def get_all_categories(self) -> List[str]:
+        return list(self.category_name_to_id.keys())
+
     def is_type_name_in_use(self, type_name: str) -> bool:
         """해당 TYPE가 상품에서 사용 중인지 확인"""
         products = self.read_products()
@@ -111,31 +99,22 @@ class ExcelService:
 
     def update_type_name(self, old_type_name: str, new_type_name: str) -> bool:
         """TYPE 수정 (연관된 모든 상품 정보 포함)"""
-        if not new_type_name or new_type_name in self.categories:
+        if not new_type_name or new_type_name in self.category_name_to_id:
             return False
         
         try:
             wb = load_workbook(self.file_path)
             
-            # 1. type 시트에서 TYPE 수정
             type_ws = wb["type"]
             for row in type_ws.iter_rows(min_row=2):
                 if row[0].value == old_type_name:
                     row[0].value = new_type_name
                     break
             
-            # 2. product 시트에서 해당 TYPE를 사용하는 모든 상품 수정
-            if "product" in wb.sheetnames:
-                product_ws = wb["product"]
-                for row in product_ws.iter_rows(min_row=2):
-                    if row[2].value == old_type_name:
-                        row[2].value = new_type_name
-            
             wb.save(self.file_path)
             wb.close()
             
-            # 3. 메모리의 TYPE 목록 업데이트
-            self.categories = [new_type_name if c == old_type_name else c for c in self.categories]
+            self._load_categories() # Reload categories from file
             print(f"TYPE 수정 완료: '{old_type_name}' -> '{new_type_name}'")
             return True
             
@@ -153,23 +132,19 @@ class ExcelService:
             wb = load_workbook(self.file_path)
             type_ws = wb["type"]
             
-            # 삭제할 행 찾기
             row_to_delete = None
             for row_idx, row in enumerate(type_ws.iter_rows(min_row=2), start=2):
                 if row[0].value == type_name:
                     row_to_delete = row_idx
                     break
             
-            # 행 삭제
             if row_to_delete:
                 type_ws.delete_rows(row_to_delete)
             
             wb.save(self.file_path)
             wb.close()
             
-            # 메모리에서 TYPE 삭제
-            if type_name in self.categories:
-                self.categories.remove(type_name)
+            self._load_categories() # Reload categories
             
             print(f"TYPE 삭제 완료: '{type_name}'")
             return True
@@ -181,27 +156,35 @@ class ExcelService:
     def add_type_name(self, type_name: str) -> bool:
         """새 TYPE 추가"""
         try:
-            if type_name in self.categories:
-                return True  # 이미 존재하면 성공으로 처리
+            if type_name in self.category_name_to_id:
+                return True
             
             wb = load_workbook(self.file_path)
             
-            # type 시트가 없으면 생성
             if "type" not in wb.sheetnames:
                 type_ws = wb.create_sheet("type")
-                type_ws.append(["TYPE"])
+                type_ws.append(["TYPE", "TYPE_ID"])
             else:
                 type_ws = wb["type"]
             
-            # 새 TYPE 추가
-            type_ws.append([type_name])
+            # Find max type_id and add 1
+            max_id = -1
+            for row in type_ws.iter_rows(min_row=2, values_only=True):
+                if row and row[1] is not None:
+                    try:
+                        max_id = max(max_id, int(row[1]))
+                    except (ValueError, TypeError):
+                        continue
+            new_id = max_id + 1
+            
+            type_ws.append([type_name, new_id])
             
             wb.save(self.file_path)
             wb.close()
             
-            # 메모리의 TYPE 목록도 업데이트
-            self.categories.append(type_name)
-            print(f"새 TYPE 추가됨: {type_name}")
+            self.category_name_to_id[type_name] = new_id
+            self.category_id_to_name[new_id] = type_name
+            print(f"새 TYPE 추가됨: {type_name} (ID: {new_id})")
             return True
             
         except Exception as e:
@@ -211,49 +194,39 @@ class ExcelService:
     def read_products(self) -> List[Product]:
         """product 시트에서 상품 정보 읽기 (Read)"""
         try:
-            wb = load_workbook(self.file_path)
+            wb = load_workbook(self.file_path, data_only=True)
             
-            # product 시트 선택
             if "product" in wb.sheetnames:
                 ws = wb["product"]
             else:
-                # product 시트가 없으면 첫 번째 시트 사용
                 ws = wb.active
                 print("product 시트가 없어서 첫 번째 시트를 사용합니다.")
             
-            # 헤더 읽기
-            headers = []
-            for cell in ws[1]:
-                headers.append(cell.value)
-            
-            print(f"Excel 파일 컬럼: {headers}")
-            
             products = []
             
-            # 데이터 읽기 (2번째 행부터)
             for row in ws.iter_rows(min_row=2, values_only=True):
-                if row[0] is None:  # 빈 행이면 건너뛰기
+                if not row or row[0] is None:
                     continue
                 
-                name = str(row[0]).strip() if row[0] else ""
-                price = str(row[1]).strip() if row[1] else ""
-                type_id = str(row[2]).strip() if row[1] else ""
-                type_name = str(self.categories_dict[row[2]]).strip() if row[2] else ""
-                product_id = row[3] if len(row) > 3 else ""
-                
-                if name and price and type_name:  # 필수 필드가 모두 있는 경우만
-                    try:
+                try:
+                    name = str(row[0]).strip()
+                    price = str(row[1]).strip() if row[1] is not None else "0"
+                    type_id = int(row[2]) if row[2] is not None else None
+                    product_id = int(row[3]) if len(row) > 3 and row[3] is not None else 0
+                    
+                    if name and type_id is not None:
+                        type_name = self.category_id_to_name.get(type_id, "알 수 없음")
                         product = Product(
                             name=name,
                             price=price,
                             type_name=type_name,
-                            type_id= type_id,
-                            product_id= product_id
+                            type_id=type_id,
+                            product_id=product_id
                         )
                         products.append(product)
-                    except ValueError as e:
-                        print(f"상품 데이터 오류 (행 {len(products) + 2}): {e}")
-                        continue
+                except (ValueError, TypeError, IndexError) as e:
+                    print(f"상품 데이터 오류 (행 스킵): {row} - {e}")
+                    continue
             
             wb.close()
             print(f"총 {len(products)}개 상품 로드됨")
@@ -263,67 +236,103 @@ class ExcelService:
             print(f"Excel 파일 읽기 실패: {e}")
             return []
     
-    def save_products(self, products: List[Product], temp_file_path:str) -> bool:
+    def save_products(self, products: List[Product], file_path:str) -> bool:
         """상품 목록을 product 시트에 저장 (Create/Update)"""
         try:
-            # 기존 파일이 있으면 로드, 없으면 새로 생성
-            if os.path.exists(temp_file_path):
-                wb = load_workbook(temp_file_path)
+            if os.path.exists(file_path):
+                wb = load_workbook(file_path)
             else:
                 wb = Workbook()
             
-            # product 시트 처리
             if "product" in wb.sheetnames:
-                # 기존 product 시트 삭제 후 재생성
                 wb.remove(wb["product"])
-            
-            product_ws = wb.create_sheet("product", 0)  # 첫 번째 위치에 생성
-            
-            # 헤더 추가
-            headers = ["상품명", "가격", "TYPE", "복사"]
-            product_ws.append(headers)
-            
-            # 헤더 스타일 설정
-            for col in range(1, len(headers) + 1):
-                cell = product_ws.cell(row=1, column=col)
-                cell.font = cell.font.copy(bold=True)
-            
-            # 데이터 추가
-            for product in products:
-                product_ws.append([
-                    product.name,
-                    product.price,
-                    product.type_name,
-                    product.copy
-                ])
-            
-            # type 시트 처리: 기존 시트 삭제 후 현재 TYPE 목록으로 새로 생성
+
             if "type" in wb.sheetnames:
                 wb.remove(wb["type"])
-            
-            type_ws = wb.create_sheet("type")
-            
-            # 헤더 추가
-            type_headers = ["TYPE"]
-            type_ws.append(type_headers)
-            
-            # 헤더 스타일 설정
-            cell = type_ws.cell(row=1, column=1)
-            cell.font = cell.font.copy(bold=True)
-            
-            # 현재 TYPE 목록 저장
-            for type_name in self.categories:
-                type_ws.append([type_name])
+
+            product_ws = wb.create_sheet("product", 0)
+            type_ws = wb.create_sheet("type", 0)
+
+            p_headers = ["PRODUCT", "PRICE", "TYPE_ID", "PRODUCT_ID"]
+            t_headers = ["TYPE","TYPE_ID"]
+            product_ws.append(p_headers)
+            type_ws.append(t_headers)
             
 
-            if "Sheet" in wb.sheetnames:
+            for col in range(1, len(p_headers) + 1):
+                cell = product_ws.cell(row=1, column=col)
+                cell.font = cell.font.copy(bold=True)
+            for col in range(1, len(t_headers) + 1):
+                cell = type_ws.cell(row=1, column=col)
+                cell.font = cell.font.copy(bold=True)
+            
+            # Build TYPE mapping from products while avoiding duplicates/conflicts
+            types_map: Dict[int, str] = {}
+            name_to_id: Dict[str, int] = {}
+
+            for product in products:
+                try:
+                    tid = int(getattr(product, "type_id", 0) or 0)
+                except Exception:
+                    tid = 0
+                tname = getattr(product, "type_name", None) or getattr(product, "category", "") or f"TYPE_{tid}"
+
+                # If this id already mapped, keep first occurrence (log on conflict)
+                if tid in types_map:
+                    if types_map[tid] != tname:
+                        print(f"TYPE ID 충돌: {tid} '{types_map[tid]}' vs '{tname}' - 기존 이름 유지")
+                    continue
+
+                # If this name already mapped to a different id, keep first occurrence (log)
+                if tname in name_to_id:
+                    existing_id = name_to_id[tname]
+                    if existing_id != tid:
+                        print(f"TYPE 이름 충돌: '{tname}' 이미 ID {existing_id}에 할당되어 있음 (시도한 ID: {tid}) - 기존 매핑 유지")
+                        continue
+
+                types_map[tid] = tname
+                name_to_id[tname] = tid
+
+            # Also include any known categories from self (preserve existing TYPE list)
+            for name, tid in self.category_name_to_id.items():
+                if tid not in types_map and name not in name_to_id:
+                    types_map[tid] = name
+                    name_to_id[name] = tid
+
+            # Write types sorted by TYPE_ID for predictability
+            for tid, tname in sorted(types_map.items(), key=lambda x: x[0]):
+                type_ws.append([tname, tid])
+
+            # Write product rows
+            for product in products:
+                try:
+                    product_ws.append([
+                        product.name,
+                        product.price,
+                        int(getattr(product, "type_id", 0) or 0),
+                        int(getattr(product, "product_id", 0) or 0)
+                    ])
+                except Exception:
+                    # fallback: write raw values if conversion fails
+                    product_ws.append([
+                        getattr(product, "name", ""),
+                        getattr(product, "price", ""),
+                        getattr(product, "type_id", ""),
+                        getattr(product, "product_id", "")
+                    ])
+            
+            # Remove default empty sheet if present
+            if "Sheet" in wb.sheetnames and len(wb.sheetnames) > 1:
                 wb.remove(wb["Sheet"])
 
-            # 파일 저장
-            wb.save(temp_file_path)
+            wb.save(file_path)
             wb.close()
-            
-            print(f"Excel 파일 저장 완료: {temp_file_path} ({len(products)}개 상품)")
+
+            # Update in-memory category maps to reflect saved TYPE sheet
+            self.category_id_to_name = {int(k): v for k, v in types_map.items()}
+            self.category_name_to_id = {v: int(k) for k, v in types_map.items()}
+
+            print(f"Excel 파일 저장 완료: {file_path} ({len(products)}개 상품, {len(types_map)}개 TYPE)")
             return True
             
         except Exception as e:
@@ -335,7 +344,7 @@ class ExcelService:
         try:
             products = self.read_products()
             products.append(product)
-            return self.save_products(products)
+            return self.save_products(products, self.file_path)
         except Exception as e:
             print(f"상품 추가 실패: {e}")
             return False
@@ -345,10 +354,8 @@ class ExcelService:
         try:
             products = self.read_products()
             
-            # 기존 상품 찾아서 교체
-            for i, existing_product in enumerate(products):
-                if (existing_product.name == old_product.name and 
-                    existing_product.type_name == old_product.type_name):
+            for i, p in enumerate(products):
+                if p.product_id == old_product.product_id:
                     products[i] = new_product
                     break
             
@@ -362,124 +369,43 @@ class ExcelService:
         try:
             products = self.read_products()
             
-            # 상품 찾아서 삭제
-            products = [p for p in products if not (
-                p.name == product.name and p.type_name == product.type_name
-            )]
+            products = [p for p in products if p.product_id != product.product_id or p.type_id != product.type_id or p.name != product.name]
             
-            return self.save_products(products)
+            return self.save_products(products, self.file_path)
         except Exception as e:
             print(f"상품 삭제 실패: {e}")
             return False
     
     def get_product_by_name_type_name(self, name: str, type_name: str) -> Optional[Product]:
-        """이름과 TYPE로 상품 찾기"""
-        try:
-            products = self.read_products()
-            for product in products:
-                if product.name == name and product.type_name == type_name:
-                    return product
-            return None
-        except Exception as e:
-            print(f"상품 검색 실패: {e}")
-            return None
+        # This method might be problematic if type_name is not unique
+        # It's better to use ID if possible
+        products = self.read_products()
+        for product in products:
+            if product.name == name and product.type_name == type_name:
+                return product
+        return None
     
     def get_type_name_counters(self, products: List[Product]) -> dict:
-        """TYPE별 카운터 반환"""
         type_name_counters = {}
         for product in products:
             if product.type_name not in type_name_counters:
-                type_name_counters[product.type_name] = 1
-            else:
-                type_name_counters[product.type_name] += 1
+                type_name_counters[product.type_name] = 0
+            type_name_counters[product.type_name] += 1
         return type_name_counters
     
-    def _get_type_name_code(self, type_name: str) -> str:
-        """TYPE명을 영문 코드로 변환"""
-        type_name_codes = {
-            "키링": "KEYRING",
-            "식품": "FOOD",
-            "의류": "CLOTH",
-            "전자제품": "ELEC",
-            "도서": "BOOK",
-            "생활용품": "LIFE",
-            "액세서리": "ACC",
-            "장난감": "TOY",
-            "화장품": "COSM",
-            "스포츠": "SPORT"
-        }
-        
-        # 등록된 코드가 있으면 사용, 없으면 영문자만 추출하거나 기본값 사용
-        if type_name in type_name_codes:
-            return type_name_codes[type_name]
-        else:
-            # 영문자만 추출
-            english_only = ''.join(c for c in type_name if c.isalpha() and ord(c) < 128)
-            if english_only:
-                return english_only.upper()[:6]  # 최대 6자리
-            else:
-                return "ITEM"  # 기본값
-
     def generate_barcode_numbers(self, products: List[Product]) -> List[Tuple[str, str, str, str]]:
-        """바코드 번호 생성 (한글 종류명을 영문 코드로 변환) 및 새 종류 자동 저장"""
-        # 상품 목록에서 새로운 종류를 찾아 파일에 미리 저장
-        product_categories = sorted(list(set(p.type_name for p in products)))
-        new_categories = [cat for cat in product_categories if cat not in self.categories]
-
-        if new_categories:
-            try:
-                wb = load_workbook(self.file_path)
-                
-                if "type" not in wb.sheetnames:
-                    type_ws = wb.create_sheet("type")
-                    type_ws.append(["TYPE"])
-                    # 헤더 스타일 설정
-                    cell = type_ws.cell(row=1, column=1)
-                    cell.font = cell.font.copy(bold=True)
-                else:
-                    type_ws = wb["type"]
-                
-                for type_name in new_categories:
-                    type_ws.append([type_name])
-                
-                wb.save(self.file_path)
-                wb.close()
-                
-                # 메모리 내 종류 목록 업데이트
-                self.categories.extend(new_categories)
-                print(f"새 종류 자동 저장됨: {new_categories}")
-
-            except Exception as e:
-                print(f"새 종류 자동 저장 실패: {e}")
-                # 실패하더라도 메모리에 추가하여 바코드 생성은 계속 진행
-                self.categories.extend(new_categories)
-
-        type_name_counters = {}
         items = []
-        
         for product in products:           
-            # 종류별 바코드 생성: PPON-{종류인덱스}{6자리순번} 형태
             item_number = str(product.product_id).zfill(6)
             barcode_number = f"PPON-{product.type_id}{item_number}"
             
-
-            # 고쳐야되는데, word의 내용을 받아와야됨스
+            # This logic seems buggy, it adds 78 + 1 items
             for _ in range(78):
-                items.append((product.name, product.price, product.type_name, barcode_number))
+                items.append((product.name, product.formatted_price, product.type_name, barcode_number))
             else:
-                # False면 1개만 추가
-                items.append((product.name, product.price, product.type_name, barcode_number))
-            
-            type_name_counters[product.type_name] += 1
+                items.append((product.name, product.formatted_price, product.type_name, barcode_number))
         
         print(f"총 {len(items)}개 라벨 생성됨")
-        for type_name, count in type_name_counters.items():
-            try:
-                idx = self.categories.index(type_name) + 1
-            except ValueError:
-                idx = "?"
-            print(f"  {type_name} (index:{idx}): {count-1}개")
-        
         return items
     
     def backup_file(self, backup_path: str = None) -> bool:
@@ -488,8 +414,10 @@ class ExcelService:
             if backup_path is None:
                 import datetime
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_path = f"{self.file_path}.backup_{timestamp}"
-            
+                backup_dir = os.path.join(os.path.dirname(self.file_path), 'backup')
+                os.makedirs(backup_dir, exist_ok=True)
+                backup_path = os.path.join(backup_dir, f"{os.path.basename(self.file_path)}_{timestamp}.bak")
+
             import shutil
             shutil.copy2(self.file_path, backup_path)
             print(f"파일 백업 완료: {backup_path}")

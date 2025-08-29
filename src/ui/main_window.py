@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QSplitter, QTableWidget, QTableWidgetItem, QPushButton,
                                QLabel, QProgressBar, QMessageBox, QFileDialog, QMenu,
                                QHeaderView, QTextEdit, QGroupBox, QGridLayout, QCheckBox,
-                               QSizePolicy)
+                               QSizePolicy, QInputDialog)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QFont
 
@@ -38,17 +38,14 @@ class WorkerThread(QThread):
             self.status_updated.emit("바코드 번호 생성 중...")
             self.progress_updated.emit(10)
             
-            # 바코드 번호 생성
             items = self.excel_service.generate_barcode_numbers(self.products)
             self.progress_updated.emit(30)
             
             self.status_updated.emit("바코드 이미지 생성 중...")
-            # 바코드 이미지를 메모리에 생성
             barcode_images = self.barcode_generator.generate_barcodes_for_products(items)
             self.progress_updated.emit(60)
             
             self.status_updated.emit("Word 문서 생성 중...")
-            # Word 문서 생성 (메모리의 바코드 이미지 사용)
             files_created = self.word_service.generate_label_documents(items, barcode_images)
             self.progress_updated.emit(90)
             
@@ -68,8 +65,9 @@ class MainWindow(QMainWindow):
         self.products = []
         self.selected_products = []
         self.worker_thread = None
+        self.data_path = None
+        self.editing_product = None # 상품 수정 시 원본 저장
         
-        # 서비스 초기화
         self.file_service = FileService()
         self.excel_service = None
         self.word_service = None
@@ -79,7 +77,6 @@ class MainWindow(QMainWindow):
         self.setup_services()
         self.setup_connections()
         
-        # 스타일 적용
         self.setStyleSheet(MAIN_STYLE)
     
     def setup_ui(self):
@@ -87,30 +84,24 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("바코드 라벨 생성기")
         self.setGeometry(100, 100, 1200, 800)
         
-        # 중앙 위젯
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # 메인 레이아웃
         main_layout = QVBoxLayout()
         
-        # 제목
         title_label = QLabel("바코드 라벨 생성기")
         title_label.setProperty("class", "title")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
         
-        # 스플리터로 좌우 분할
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # 왼쪽 패널 (상품 입력)
         left_panel = QWidget()
         left_layout = QVBoxLayout()
         
         self.product_widget = ProductWidget()
         left_layout.addWidget(self.product_widget)
         
-        # 파일 관련 버튼들
         file_group = QGroupBox("파일 관리")
         file_layout = QGridLayout()
         
@@ -133,11 +124,9 @@ class MainWindow(QMainWindow):
         left_panel.setLayout(left_layout)
         splitter.addWidget(left_panel)
         
-        # 오른쪽 패널 (상품 목록 및 제어)
         right_panel = QWidget()
         right_layout = QVBoxLayout()
         
-        # 상품 목록 헤더 (라벨 + 전체 선택 체크박스)
         table_header_layout = QHBoxLayout()
         table_header_layout.addWidget(QLabel("상품 목록"))
         
@@ -146,7 +135,6 @@ class MainWindow(QMainWindow):
         table_header_layout.addStretch()
         right_layout.addLayout(table_header_layout)
         
-        # 상품 목록 테이블
         self.products_table = QTableWidget()
         self.products_table.setColumnCount(6)
         self.products_table.setHorizontalHeaderLabels(["", "상품명", "가격", "종류", "바코드번호", "관리"])
@@ -155,12 +143,11 @@ class MainWindow(QMainWindow):
         self.products_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.products_table.setColumnWidth(0, 30)
         self.products_table.setAlternatingRowColors(True)
-        self.products_table.setMinimumHeight(400)  # 최소 높이 설정
-        self.products_table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)  # 세로 방향으로 확장
+        self.products_table.setMinimumHeight(400)
+        self.products_table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         
         right_layout.addWidget(self.products_table)
         
-        # 제어 버튼들
         control_layout = QHBoxLayout()
         
         self.generate_button = QPushButton("라벨 생성 시작")
@@ -176,7 +163,6 @@ class MainWindow(QMainWindow):
         
         right_layout.addLayout(control_layout)
         
-        # 진행 상황
         progress_group = QGroupBox("진행 상황")
         progress_layout = QVBoxLayout()
         
@@ -192,7 +178,6 @@ class MainWindow(QMainWindow):
         progress_group.setLayout(progress_layout)
         right_layout.addWidget(progress_group)
         
-        # 로그 출력
         log_group = QGroupBox("작업 로그")
         log_layout = QVBoxLayout()
         
@@ -207,20 +192,17 @@ class MainWindow(QMainWindow):
         right_panel.setLayout(right_layout)
         splitter.addWidget(right_panel)
         
-        # 스플리터 비율 설정
         splitter.setSizes([400, 800])
         
         main_layout.addWidget(splitter)
         central_widget.setLayout(main_layout)
         
-        # 메뉴바
         self.setup_menu()
     
     def setup_menu(self):
         """메뉴바 설정"""
         menubar = self.menuBar()
         
-        # 파일 메뉴
         file_menu = menubar.addMenu("파일")
         
         load_action = QAction("Excel 파일 불러오기", self)
@@ -237,7 +219,6 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
-        # 도구 메뉴
         tools_menu = menubar.addMenu("도구")
         
         manage_categories_action = QAction("종류 관리...", self)
@@ -258,7 +239,6 @@ class MainWindow(QMainWindow):
         cleanup_action.triggered.connect(self.cleanup_temp_files)
         tools_menu.addAction(cleanup_action)
         
-        # 도움말 메뉴
         help_menu = menubar.addMenu("도움말")
         
         about_action = QAction("정보", self)
@@ -270,18 +250,14 @@ class MainWindow(QMainWindow):
         try:
             self.file_service.ensure_directories()
             
-            # 템플릿 파일 경로 가져오기
             template_path = self.file_service.get_template_path()
             self.word_service = WordService(template_path)
             
-            # 바코드 생성기 초기화
             self.barcode_generator = BarcodeGenerator()
             
-            # Excel 서비스 초기화
             self.data_path = self.file_service.get_data_path()
             self.excel_service = ExcelService(self.data_path)
             
-            # 프로그램 시작 시 Excel 파일에서 상품 목록 자동 로드
             self.load_products_from_excel()
             
             self.log_message("서비스 초기화 완료")
@@ -295,12 +271,10 @@ class MainWindow(QMainWindow):
     def load_products_from_excel(self):
         """Excel 파일에서 상품 목록 자동 로드"""
         try:
-            # 종류 목록을 ProductWidget에 설정
             categories = self.excel_service.get_categories()
             self.product_widget.set_categories(categories)
-            self.log_message(f"종류 목록 로드됨: {categories}")
+            self.log_message(f"종류 목록 로드됨: {list(categories.keys())}")
             
-            # 상품 목록 로드
             products = self.excel_service.read_products()
             if products:
                 self.products = products
@@ -315,17 +289,22 @@ class MainWindow(QMainWindow):
     def add_product(self, product: Product):
         """상품 추가 (Excel 파일에 저장)"""
         try:
-            # 새로운 종류인 경우 type 시트에 추가
-            if product.category not in self.excel_service.get_categories():
-                if self.excel_service.add_category(product.category):
-                    # ProductWidget의 종류 목록 업데이트
+            if product.type_id == -1: # A new category was entered
+                if self.excel_service.add_type_name(product.type_name):
+                    self.log_message(f"새 종류 '{product.type_name}'이(가) 추가되었습니다.")
                     categories = self.excel_service.get_categories()
                     self.product_widget.set_categories(categories)
-                    self.log_message(f"새 종류 추가됨: {product.category}")
-            
-            # Excel 파일에 상품 추가
+                    if product.type_name in categories:
+                        product.type_id = categories[product.type_name]
+                    else:
+                        self.log_message(f"새 종류 '{product.type_name}'의 ID를 찾을 수 없습니다.", "error")
+                        return
+                else:
+                    self.log_message(f"새 종류 '{product.type_name}' 추가에 실패했습니다.", "error")
+                    return
+
             if self.excel_service.add_product(product):
-                self.products.append(product)
+                self.products = self.excel_service.read_products()
                 self.update_products_table()
                 self.log_message(f"상품 추가 및 Excel 저장 완료: {product.name}")
             else:
@@ -333,33 +312,41 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.log_message(f"상품 추가 중 오류: {e}", "error")
     
-    def update_product(self, product: Product):
+    def update_product(self, updated_product: Product):
         """상품 수정 (Excel 파일에 저장)"""
         try:
-            # 기존 상품 찾아서 교체
-            old_product = None
-            for i, existing_product in enumerate(self.products):
-                if (
-                    existing_product.name == product.name and 
-                    existing_product.category == product.category
-                ):
-                    old_product = existing_product
-                    self.products[i] = product
-                    break
-            
-            if old_product:
-                # Excel 파일에 상품 수정
-                if self.excel_service.update_product(old_product, product):
-                    self.update_products_table()
-                    self.log_message(f"상품 수정 및 Excel 저장 완료: {product.name}")
+            old_product = self.editing_product
+            if not old_product:
+                self.log_message("수정할 원본 상품 정보를 찾을 수 없습니다.", "error")
+                return
+
+            if updated_product.type_id == -1: # A new category was entered
+                if self.excel_service.add_type_name(updated_product.type_name):
+                    self.log_message(f"새 종류 '{updated_product.type_name}'이(가) 추가되었습니다.")
+                    categories = self.excel_service.get_categories()
+                    self.product_widget.set_categories(categories)
+                    if updated_product.type_name in categories:
+                        updated_product.type_id = categories[updated_product.type_name]
+                    else:
+                        self.log_message(f"새 종류 '{updated_product.type_name}'의 ID를 찾을 수 없습니다.", "error")
+                        return
                 else:
-                    self.log_message(f"상품 수정 실패: {product.name}", "error")
+                    self.log_message(f"새 종류 '{updated_product.type_name}' 추가에 실패했습니다.", "error")
+                    return
+
+            if self.excel_service.update_product(old_product, updated_product):
+                self.products = self.excel_service.read_products()
+                self.update_products_table()
+                self.log_message(f"상품 수정 및 Excel 저장 완료: {updated_product.name}")
             else:
-                self.log_message(f"수정할 상품을 찾을 수 없습니다: {product.name}", "error")
-                
+                self.log_message(f"상품 수정 실패: {updated_product.name}", "error")
+            
+            self.editing_product = None
+
         except Exception as e:
             self.log_message(f"상품 수정 중 오류: {e}", "error")
-    
+            self.editing_product = None
+
     def delete_product(self, product: Product):
         """상품 삭제 (Excel 파일에서도 삭제)"""
         reply = QMessageBox.question(self, "상품 삭제", 
@@ -368,7 +355,6 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                # Excel 파일에서 상품 삭제
                 if self.excel_service.delete_product(product):
                     self.products.remove(product)
                     if product in self.selected_products:
@@ -391,8 +377,7 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                # Excel 파일 초기화
-                if self.excel_service.save_products([],self.data_path):
+                if self.excel_service.save_products([], self.data_path):
                     self.products.clear()
                     self.selected_products.clear()
                     self.update_products_table()
@@ -409,18 +394,14 @@ class MainWindow(QMainWindow):
         
         if file_path:
             try:
-                # 새로운 Excel 서비스 생성
                 temp_excel_service = ExcelService(file_path)
                 
-                # 종류 목록 업데이트
                 categories = temp_excel_service.get_categories()
                 self.product_widget.set_categories(categories)
                 
-                # 상품 목록 로드
                 products = temp_excel_service.read_products()
                 
                 if products or categories:
-                    # 현재 Excel 서비스 교체
                     self.excel_service = temp_excel_service
                     self.products = products
                     self.selected_products.clear()
@@ -444,8 +425,6 @@ class MainWindow(QMainWindow):
         
         if file_path:
             try:
-                # 현재 상품 목록을 선택한 위치에 저장
-                # temp_excel_service = ExcelService(file_path)
                 if self.excel_service.save_products(self.products, file_path):
                     self.log_message(f"Excel 파일 저장 완료: {file_path}")
                     QMessageBox.information(self, "완료", "Excel 파일이 저장되었습니다.")
@@ -485,12 +464,10 @@ class MainWindow(QMainWindow):
     def generate_labels(self):
         """라벨 생성 실행"""
         try:
-            # UI 비활성화
             self.generate_button.setEnabled(False)
             self.progress_bar.setVisible(True)
             self.progress_bar.setValue(0)
             
-            # 작업 스레드 시작
             self.worker_thread = WorkerThread(
                 self.excel_service, self.barcode_generator, self.word_service, self.selected_products
             )
@@ -507,7 +484,6 @@ class MainWindow(QMainWindow):
     
     def generation_finished(self, success: bool, message: str):
         """라벨 생성 완료"""
-        # UI 복원
         self.generate_button.setEnabled(True)
         self.progress_bar.setVisible(False)
         
@@ -569,7 +545,6 @@ class MainWindow(QMainWindow):
         log_entry = f'<span style="color: {color};">{timestamp} {prefix}</span> {message}'
         self.log_text.append(log_entry)
         
-        # 자동 스크롤
         self.log_text.verticalScrollBar().setValue(
             self.log_text.verticalScrollBar().maximum()
         )
@@ -601,7 +576,6 @@ class MainWindow(QMainWindow):
         self.products_table.setRowCount(len(self.products))
         
         for row, product in enumerate(self.products):
-            # 선택 체크박스
             checkbox = QCheckBox()
             checkbox.setChecked(product in self.selected_products)
             checkbox.stateChanged.connect(lambda state, p=product: self._on_product_selected(state, p))
@@ -613,24 +587,19 @@ class MainWindow(QMainWindow):
             layout.setContentsMargins(0, 0, 0, 0)
             self.products_table.setCellWidget(row, 0, cell_widget)
             
-            # 상품명
             name_item = QTableWidgetItem(product.name)
             self.products_table.setItem(row, 1, name_item)
             
-            # 가격
             price_item = QTableWidgetItem(product.formatted_price)
             self.products_table.setItem(row, 2, price_item)
             
-            # 종류
             category_item = QTableWidgetItem(product.type_name)
             self.products_table.setItem(row, 3, category_item)
             
-            # 바코드번호
             item_number = str(product.product_id).zfill(6)
-            barcode_item = QTableWidgetItem(f"{product.type_id}{item_number}" if product.type_id and product.product_id else "")
+            barcode_item = QTableWidgetItem(f"{product.type_id}{item_number}" if product.type_id is not None and product.product_id is not None else "")
             self.products_table.setItem(row, 4, barcode_item)
             
-            # 관리 버튼
             button_widget = QWidget()
             button_layout = QHBoxLayout()
             button_layout.setContentsMargins(2, 2, 2, 2)
@@ -695,6 +664,7 @@ class MainWindow(QMainWindow):
 
     def edit_product(self, product: Product):
         """상품 수정 모드로 전환"""
+        self.editing_product = product
         self.product_widget.edit_product(product)
 
     def manage_categories(self):
@@ -711,16 +681,75 @@ class MainWindow(QMainWindow):
         """종류 변경 시 UI 업데이트"""
         self.log_message("종류 목록이 변경되어 데이터를 새로고침합니다.")
         
-        # 1. ProductWidget의 종류 목록 업데이트
         categories = self.excel_service.get_categories()
         self.product_widget.set_categories(categories)
         
-        # 2. 현재 상품 목록 다시 로드 (변경된 종류 이름 반영)
         self.products = self.excel_service.read_products()
         self.selected_products.clear()
         
-        # 3. 상품 테이블 업데이트
         self.update_products_table()
         
-        # 4. 수정 중이던 상품 폼 초기화
         self.product_widget.clear_form()
+
+    def change_product_id(self, product: Product):
+        """제품ID 변경 (입력 다이얼로그) — 중복 시 교환 확인"""
+        try:
+            current = int(getattr(product, "product_id", 0) or 0)
+        except Exception:
+            current = 0
+
+        new_id, ok = QInputDialog.getInt(self, "제품ID 변경", f"'{product.name}'의 새로운 제품ID를 입력하세요:", value=current, min=0)
+        if not ok:
+            return
+
+        if new_id == current:
+            return
+
+        existing = next((p for p in self.products if int(getattr(p, "product_id", 0) or 0) == new_id), None)
+
+        if existing and existing is not product:
+            resp = QMessageBox.question(
+                self,
+                "제품ID 중복",
+                f"제품ID {new_id}은(는) 이미 '{existing.name}'에서 사용 중입니다.\n"
+                f"두 상품의 제품ID를 서로 교환하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if resp == QMessageBox.StandardButton.Yes:
+                try:
+                    existing_id = int(getattr(existing, "product_id", 0) or 0)
+                    existing.product_id = current
+                    product.product_id = new_id
+
+                    if self.excel_service and self.excel_service.save_products(self.products, self.data_path):
+                        self.update_products_table()
+                        self.log_message(f"제품ID 교환 완료: {product.name}({current}→{new_id}) <-> {existing.name}({existing_id}→{current})", "success")
+                        QMessageBox.information(self, "완료", "제품ID가 교환되어 저장되었습니다.")
+                    else:
+                        existing.product_id = existing_id
+                        product.product_id = current
+                        QMessageBox.critical(self, "오류", "제품ID 저장에 실패했습니다.")
+                        self.log_message("제품ID 저장 실패", "error")
+                except Exception as e:
+                    existing.product_id = int(getattr(existing, "product_id", 0) or 0)
+                    product.product_id = current
+                    QMessageBox.critical(self, "오류", f"제품ID 교환 중 오류: {e}")
+                    self.log_message(f"제품ID 교환 오류: {e}", "error")
+            else:
+                return
+        else:
+            old_id = current
+            product.product_id = new_id
+            try:
+                if self.excel_service and self.excel_service.save_products(self.products, self.data_path):
+                    self.update_products_table()
+                    self.log_message(f"제품ID 변경 완료: {product.name} ({old_id} → {new_id})", "success")
+                    QMessageBox.information(self, "완료", "제품ID가 변경되어 저장되었습니다.")
+                else:
+                    product.product_id = old_id
+                    QMessageBox.critical(self, "오류", "제품ID 저장에 실패했습니다.")
+                    self.log_message("제품ID 저장 실패", "error")
+            except Exception as e:
+                product.product_id = old_id
+                QMessageBox.critical(self, "오류", f"제품ID 변경 실패: {e}")
+                self.log_message(f"제품ID 변경 중 오류: {e}", "error")

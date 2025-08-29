@@ -13,7 +13,6 @@ class Product:
     type_name: str
     product_id: int
     type_id: int
-    copy: bool = False
     
 
     def __post_init__(self):
@@ -58,11 +57,9 @@ class Product:
         return {
             'name': self.name,
             'price': self.price,
-
-            'category': self.type_name,
-
-            'copy': self.copy
-
+            'product_id' : self.product_id,
+            'type_id' : self.type_id,       
+            'type_name': self.type_name,
         }
     
 
@@ -78,8 +75,12 @@ class Product:
 
             price=data.get('price', ''),
 
-            category=data.get('category', ''),
+            product_id=data.get('product_id', ''),
 
-            copy=data.get('copy', False)
+            type_id=data.get('type_id', ''),
+
+            type_name=data.get('type_name', ''),
+
+
         )
 
