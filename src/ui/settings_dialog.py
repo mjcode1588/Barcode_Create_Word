@@ -180,7 +180,48 @@ class SettingsDialog(QDialog):
     def on_template_changed(self, index):
         # 템플릿 변경 시 라벨과 체크박스 상태 업데이트
         self.update_max_label_and_checkboxes()
+        self.template_auto_size(index)
 
+    def template_auto_size(self, index):
+        cell_size = None
+        if self.cell_sizes is None:
+            return
+
+        # dict 형태일 때: 전체 경로 우선, basename 다음으로 시도
+        if isinstance(self.cell_sizes, dict):
+            selected_path = self.templates[index] if 0 <= index < len(self.templates) else None
+            if selected_path and selected_path in self.cell_sizes:
+                cell_size = self.cell_sizes[selected_path]
+            else:
+                base = os.path.basename(selected_path) if selected_path else None
+                if base and base in self.cell_sizes:
+                    cell_size = self.cell_sizes[base]
+
+        # list/tuple 형태일 때: 인덱스 기반으로 찾기
+        elif isinstance(self.cell_sizes, (list, tuple)):
+            if 0 <= index < len(self.cell_sizes):
+                cell_size = self.cell_sizes[index]
+            else:
+                # 경우에 따라 cell_sizes 자체가 (w,h) 한쌍일 수도 있음
+                if len(self.cell_sizes) == 2 and all(isinstance(x, (int, float)) for x in self.cell_sizes):
+                    cell_size = tuple(self.cell_sizes)
+
+        # 성공적으로 셀 크기 정보를 얻었으면 module 크기 설정
+        try:
+            if cell_size and len(cell_size) >= 2:
+                cell_w = float(cell_size[0])
+                cell_h = float(cell_size[1])
+
+                # 요구사항: width는 셀 너비에서 4mm 빼서 설정, height는 셀 높이의 절반으로 설정
+                new_module_width = max(0.01, cell_w - 4.0)   # 최소값 보장
+                new_module_height = max(0.01, cell_h / 2.0)  # 최소값 보장
+
+                # 스핀박스에 반영 (소수 자릿수에 맞춰 반올림)
+                self.module_width_spin.setValue(round(new_module_width, 2))
+                self.module_height_spin.setValue(round(new_module_height, 1))
+        except Exception:
+            # 실패 시 조용히 무시 (기존 값 유지)
+            pass
     def on_max_checked(self, row, state):
         """특정 행의 Max 체크박스가 변경되었을 때 처리"""
         max_val = self.get_current_template_max()

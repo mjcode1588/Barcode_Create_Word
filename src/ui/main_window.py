@@ -603,16 +603,21 @@ class MainWindow(QMainWindow):
             self.products_table.setCellWidget(row, 0, cell_widget)
             
             name_item = QTableWidgetItem(product.name)
+            # make non-editable
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.products_table.setItem(row, 1, name_item)
             
             price_item = QTableWidgetItem(product.formatted_price)
+            price_item.setFlags(price_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.products_table.setItem(row, 2, price_item)
             
             category_item = QTableWidgetItem(product.type_name)
+            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.products_table.setItem(row, 3, category_item)
             
             item_number = str(product.product_id).zfill(6)
             barcode_item = QTableWidgetItem(f"{product.type_id}{item_number}" if product.type_id is not None and product.product_id is not None else "")
+            barcode_item.setFlags(barcode_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.products_table.setItem(row, 4, barcode_item)
             
             button_widget = QWidget()
