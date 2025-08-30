@@ -221,7 +221,8 @@ class ExcelService:
                             price=price,
                             type_name=type_name,
                             type_id=type_id,
-                            product_id=product_id
+                            product_id=product_id,
+                            barcode_num=f"{type_id}{str(product_id).zfill(6)}"
                         )
                         products.append(product)
                 except (ValueError, TypeError, IndexError) as e:
@@ -395,16 +396,12 @@ class ExcelService:
     
     def generate_barcode_numbers(self, products: List[Product]) -> List[Tuple[str, str, str, str]]:
         items = []
-        for product in products:           
-            item_number = str(product.product_id).zfill(6)
-            barcode_number = f"PPON-{product.type_id}{item_number}"
-            
+        for product in products:
+
+            barcode_format = f"PPON-{str(product.barcode_num)}"
             # This logic seems buggy, it adds 78 + 1 items
-            for _ in range(78):
-                items.append((product.name, product.formatted_price, product.type_name, barcode_number))
-            else:
-                items.append((product.name, product.formatted_price, product.type_name, barcode_number))
-        
+            items.append((product.name, product.formatted_price, product.type_name, barcode_format))
+
         print(f"총 {len(items)}개 라벨 생성됨")
         return items
     

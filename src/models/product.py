@@ -13,7 +13,7 @@ class Product:
     type_name: str
     product_id: int
     type_id: int
-    
+    barcode_num : str
 
     def __post_init__(self):
 
@@ -60,6 +60,7 @@ class Product:
             'product_id' : self.product_id,
             'type_id' : self.type_id,       
             'type_name': self.type_name,
+            'barcode_num': self.barcode_num,
         }
     
 
@@ -80,6 +81,8 @@ class Product:
             type_id=data.get('type_id', ''),
 
             type_name=data.get('type_name', ''),
+
+            barcode_num=data.get('barcode_num', ""),
 
 
         )

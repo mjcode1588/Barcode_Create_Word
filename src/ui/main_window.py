@@ -44,10 +44,11 @@ class WorkerThread(QThread):
 
             items_to_generate = []
             for product in self.products:
-                quantity = self.settings['quantities'].get(product.product_id, 1)
+                quantity = self.settings['quantities'].get(product.barcode_num, 1)
                 for _ in range(quantity):
                     items_to_generate.append(product)
 
+            print(f"생성할 아이템 수: {len(items_to_generate)}")
             items = self.excel_service.generate_barcode_numbers(items_to_generate)
             self.progress_updated.emit(30)
             
@@ -57,6 +58,7 @@ class WorkerThread(QThread):
             
             self.status_updated.emit("Word 문서 생성 중...")
             self.word_service.template_file = self.settings['template']
+            self.status_updated.emit(f"items : {len(items)}개, barcode_images : {len(barcode_images)} 페이지 생성 중...")
             files_created = self.word_service.generate_label_documents(items, barcode_images)
             self.progress_updated.emit(90)
             
@@ -465,8 +467,11 @@ class MainWindow(QMainWindow):
             return
         
         templates = [self.file_service.get_template_path(f) for f in os.listdir(self.file_service.get_template_directory()) if f.endswith('.docx')]
-        dialog = SettingsDialog(templates, self.selected_products, self)
-        
+
+        max_table_size = [self.word_service.get_table_max_size(template) for template in templates]
+        cell_sizes = [self.word_service.get_cell_size_mm(template) for template in templates]
+        dialog = SettingsDialog(templates, self.selected_products, self, max_table_size, cell_sizes)
+
         if dialog.exec():
             settings = dialog.get_settings()
             self.generate_labels(settings)

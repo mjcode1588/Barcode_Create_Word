@@ -143,13 +143,13 @@ class WordService:
         except Exception as e:
             print(f"라벨 페이지 생성 실패: {e}")
             return False
-    
-    def get_table_max_size(self):
+
+    def get_table_max_size(self, template: str):
         """
         Prints the number of rows and columns of the first table in a .docx file.
         """
         try:
-            document = Document(self.template_file)
+            document = Document(template)
             if not document.tables:
                 print("No tables found in the document.")
                 return 0
@@ -204,3 +204,94 @@ class WordService:
         print(f"총 {len(items)}개 라벨 처리됨")
         
         return total_files_created
+
+    def get_cell_size_mm(self, template: str) -> Tuple[float, float]:
+        """
+        첫 번째 테이블의 한 셀(cell) 너비와 높이를 mm 단위로 반환합니다.
+        반환값: (width_mm, height_mm). 값을 찾지 못하면 0.0으로 반환합니다.
+
+        구현 노트:
+        - 테이블 열 너비는 <w:tblGrid>/<w:gridCol w:w="..."/> 값들을 사용해 계산합니다.
+          이 값들은 일반적으로 "twips" (1/1440 인치) 단위로 표현되므로 mm로 변환합니다.
+        - 행 높이는 각 <w:trPr>/<w:trHeight w:val="..."/> 값을 우선으로 시도합니다.
+          없을 경우 모든 행의 trHeight 평균값을 시도합니다.
+        - OOXML 문서에 따라 단위/속성 위치가 다를 수 있으므로 여러 속성명을 시도합니다.
+        """
+        try:
+            document = Document(template)
+            if not document.tables:
+                return (0.0, 0.0)
+
+            table = document.tables[0]
+
+            # --- 가로 너비 계산 (tblGrid의 gridCol 사용) ---
+            width_mm = 0.0
+            try:
+                grid = table._tbl.tblGrid
+                # gridCol 요소들 가져오기
+                grid_cols = grid.findall(qn('w:gridCol'))
+                col_vals = []
+                for gc in grid_cols:
+                    # 여러 속성명 시도
+                    val = None
+                    for attr in (qn('w:w'), 'w', 'w:w', 'val'):
+                        if gc.get(attr):
+                            val = gc.get(attr)
+                            break
+                    if val:
+                        try:
+                            col_vals.append(int(val))
+                        except Exception:
+                            pass
+                if col_vals:
+                    # col_vals는 각 열의 폭(일반적으로 twips 또는 dxa) -> 평균 셀 너비 도출
+                    # twip(1/1440 inch) 가정: mm = twip / 1440 * 25.4
+                    avg_twips = sum(col_vals) / len(col_vals)
+                    width_mm = avg_twips / 1440.0 * 25.4
+            except Exception:
+                width_mm = 0.0
+
+            # --- 세로(행) 높이 계산 (첫 번째 행 또는 모든 행 trHeight 평균) ---
+            height_mm = 0.0
+            try:
+                # 우선 첫 행의 trHeight 시도
+                first_row = table.rows[0]
+                trpr = first_row._tr.find(qn('w:trPr'))
+                if trpr is not None:
+                    trh = trpr.find(qn('w:trHeight'))
+                    if trh is not None:
+                        val = trh.get('val') or trh.get(qn('w:val')) or trh.get('w')
+                        if val:
+                            try:
+                                height_mm = int(val) / 1440.0 * 25.4
+                            except Exception:
+                                height_mm = 0.0
+
+                # 못 찾았으면 모든 행의 trHeight 평균 시도
+                if not height_mm:
+                    total_twips = 0
+                    count = 0
+                    for r in table.rows:
+                        trpr = r._tr.find(qn('w:trPr'))
+                        if trpr is None:
+                            continue
+                        trh = trpr.find(qn('w:trHeight'))
+                        if trh is None:
+                            continue
+                        val = trh.get('val') or trh.get(qn('w:val')) or trh.get('w')
+                        if val:
+                            try:
+                                total_twips += int(val)
+                                count += 1
+                            except Exception:
+                                pass
+                    if count > 0:
+                        height_mm = (total_twips / count) / 1440.0 * 25.4
+            except Exception:
+                height_mm = 0.0
+
+            return (round(width_mm, 2), round(height_mm, 2))
+
+        except Exception as e:
+            print(f"get_cell_size_mm error: {e}")
+            return (0.0, 0.0)
