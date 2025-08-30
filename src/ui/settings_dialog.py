@@ -88,6 +88,7 @@ class SettingsDialog(QDialog):
         self.product_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.product_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.product_table.setRowCount(len(self.products))
+        self.product_table.verticalHeader().setDefaultSectionSize(36)
 
         for i, product in enumerate(self.products):
             name_item = QTableWidgetItem(product.name)
@@ -180,7 +181,7 @@ class SettingsDialog(QDialog):
     def on_template_changed(self, index):
         # 템플릿 변경 시 라벨과 체크박스 상태 업데이트
         self.update_max_label_and_checkboxes()
-        self.template_auto_size(index)
+        # self.template_auto_size(index)
 
     def template_auto_size(self, index):
         cell_size = None
