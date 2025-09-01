@@ -13,10 +13,12 @@ from src.ui.styles import MAIN_STYLE, SUCCESS_STYLE, WARNING_STYLE, EDIT_STYLE, 
 from src.models.product import Product
 from src.services.excel_service import ExcelService
 from src.services.word_service import WordService
-from src.services.barcode_generator import BarcodeGenerator
+from src.services.barcode_generator import BarcodeGenerator, BarcodeFileGenerator
 from src.services.file_service import FileService
+from src.services.log_service import logger
 from src.ui.category_dialog import CategoryDialog
 from src.ui.settings_dialog import SettingsDialog
+from src.ui.admin_log_dialog import AdminLogDialog
 
 class WorkerThread(QThread):
     """백그라운드 작업 스레드"""
@@ -35,12 +37,13 @@ class WorkerThread(QThread):
         self.data_path = None
     
     def run(self):
+        barcode_file_generator = None
         try:
             self.status_updated.emit("바코드 번호 생성 중...")
             self.progress_updated.emit(10)
             
-            # Create a new BarcodeGenerator with the options from the settings dialog
-            barcode_generator = BarcodeGenerator(self.settings['barcode_options'])
+            # 메모리 기반 바코드 생성기 사용 (exe 환경에서 더 안정적)
+            barcode_generator_options = {}
             
             # Word 서비스에 바코드 크기 설정 (셀 크기에 맞춰 최적화)
             template_path = self.settings['template']
@@ -57,7 +60,17 @@ class WorkerThread(QThread):
                     barcode_h_mm = max(10.0, min(cell_h_mm - 8.0, 25.0))
                     
                     self.word_service.set_barcode_size_mm(barcode_w_mm, barcode_h_mm)
-                    print(f"셀 크기 기반 바코드 크기 설정: {barcode_w_mm:.1f}mm x {barcode_h_mm:.1f}mm")
+                    logger.info("WorkerThread", f"셀 크기 기반 바코드 크기 설정: {barcode_w_mm:.1f}mm x {barcode_h_mm:.1f}mm")
+                    
+                    # 바코드 생성기 옵션에도 크기 설정
+                    barcode_generator_options = {
+                        "module_width": 0.35,
+                        "module_height": barcode_h_mm,
+                        "quiet_zone": 3.0,
+                        "text_distance": 5.0,
+                        "font_size": 10,
+                        "dpi": 300,
+                    }
 
             items_to_generate = []
             for product in self.products:
@@ -65,11 +78,13 @@ class WorkerThread(QThread):
                 for _ in range(quantity):
                     items_to_generate.append(product)
 
-            print(f"생성할 아이템 수: {len(items_to_generate)}")
+            logger.info("WorkerThread", f"생성할 아이템 수: {len(items_to_generate)}")
             items = self.excel_service.generate_barcode_numbers(items_to_generate)
             self.progress_updated.emit(30)
             
             self.status_updated.emit("바코드 이미지 생성 중...")
+            # 메모리 기반 바코드 생성 사용
+            barcode_generator = BarcodeGenerator(barcode_generator_options)
             barcode_images = barcode_generator.generate_barcodes_for_products(items)
             self.progress_updated.emit(60)
             
@@ -89,10 +104,15 @@ class WorkerThread(QThread):
             self.status_updated.emit("작업 완료!")
             self.progress_updated.emit(100)
             
+            logger.info("WorkerThread", f"라벨 생성 완료: 총 {files_created}개 파일 생성")
             self.finished.emit(True, f"총 {files_created}개 파일이 생성되었습니다.")
             
         except Exception as e:
+            logger.error("WorkerThread", f"라벨 생성 실패: {str(e)}")
             self.finished.emit(False, f"오류 발생: {str(e)}")
+        finally:
+            # 메모리 기반 바코드 생성기는 별도 정리가 필요 없음
+            pass
 
 class MainWindow(QMainWindow):
     """메인 윈도우"""
@@ -104,10 +124,14 @@ class MainWindow(QMainWindow):
         self.worker_thread = None
         self.data_path = None
         self.editing_product = None # 상품 수정 시 원본 저장
+        self.admin_log_dialog = None  # 관리자 로그 다이얼로그
         
         self.file_service = FileService()
         self.excel_service = None
         self.word_service = None
+        
+        # 애플리케이션 시작 로그
+        logger.info("MainWindow", "바코드 라벨 생성기 시작")
         
         self.setup_ui()
         self.setup_services()
@@ -276,6 +300,12 @@ class MainWindow(QMainWindow):
         cleanup_action = QAction("임시 파일 정리", self)
         cleanup_action.triggered.connect(self.cleanup_temp_files)
         tools_menu.addAction(cleanup_action)
+        
+        tools_menu.addSeparator()
+        
+        admin_log_action = QAction("관리자 로그...", self)
+        admin_log_action.triggered.connect(self.show_admin_log)
+        tools_menu.addAction(admin_log_action)
         
         help_menu = menubar.addMenu("도움말")
         
@@ -568,8 +598,30 @@ class MainWindow(QMainWindow):
                          "상품 정보를 입력하여 바코드가 포함된 라벨을 생성합니다.\n"
                          "복사 옵션을 선택하면 한 페이지에 78개의 라벨을 생성합니다.")
     
+    def show_admin_log(self):
+        """관리자 로그 다이얼로그 표시"""
+        if self.admin_log_dialog is None:
+            self.admin_log_dialog = AdminLogDialog(self)
+        
+        self.admin_log_dialog.show()
+        self.admin_log_dialog.raise_()
+        self.admin_log_dialog.activateWindow()
+        
+        logger.info("MainWindow", "관리자 로그 창이 열렸습니다")
+    
     def log_message(self, message: str, level: str = "info"):
-        """로그 메시지 추가"""
+        """로그 메시지 추가 (중앙 집중식 로그 서비스 사용)"""
+        # 중앙 집중식 로그 서비스에 로그 추가
+        if level == "error":
+            logger.error("MainWindow", message)
+        elif level == "warning":
+            logger.warning("MainWindow", message)
+        elif level == "success":
+            logger.info("MainWindow", f"✓ {message}")
+        else:
+            logger.info("MainWindow", message)
+        
+        # 기존 UI 로그도 유지 (하위 호환성)
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
         
@@ -596,17 +648,22 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """프로그램 종료 시 처리"""
         if self.worker_thread and self.worker_thread.isRunning():
+            logger.warning("MainWindow", "작업 진행 중 종료 시도")
             reply = QMessageBox.question(self, "작업 중", 
                                        "라벨 생성이 진행 중입니다. 정말 종료하시겠습니까?",
                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             
             if reply == QMessageBox.StandardButton.Yes:
+                logger.info("MainWindow", "사용자가 강제 종료를 선택함")
                 self.worker_thread.terminate()
                 self.worker_thread.wait()
+                logger.info("MainWindow", "애플리케이션 종료")
                 event.accept()
             else:
+                logger.info("MainWindow", "사용자가 종료를 취소함")
                 event.ignore()
         else:
+            logger.info("MainWindow", "애플리케이션 정상 종료")
             event.accept()
 
     def setup_connections(self):

@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('data', 'data'), ('templates', 'templates'), ('img', 'img')],     
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -26,13 +26,12 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='img/barcode_icon.ico',
 )
 coll = COLLECT(
     exe,

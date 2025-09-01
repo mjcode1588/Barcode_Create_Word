@@ -47,7 +47,7 @@ uv run python main.py
 PyInstaller를 사용하여 배포 가능한 단일 실행 파일을 생성할 수 있습니다.
 
 ```bash
-pyinstaller main.py --onefile --windowed --icon="img/barcode_icon.ico" --name "BarcodeLabelGenerator" --add-data "templates;templates" --add-data "img;img"
+uv run pyinstaller main.spec
 ```
 
 - `--onefile`: 모든 파일을 하나의 실행 파일로 묶습니다.

@@ -5,6 +5,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.shared import OxmlElement, qn
 from typing import List, Tuple
 from io import BytesIO
+from src.services.log_service import logger
 
 class WordService:
     """Word 문서 생성 서비스"""
@@ -22,7 +23,7 @@ class WordService:
         """바코드 크기를 MM 단위로 설정"""
         self.barcode_width_mm = width_mm
         self.barcode_height_mm = height_mm
-        print(f"바코드 크기 설정: {width_mm:.1f}mm x {height_mm:.1f}mm")
+        logger.info("WordService", f"바코드 크기 설정: {width_mm:.1f}mm x {height_mm:.1f}mm")
     
     def _mm_to_inches(self, mm: float) -> float:
         """MM를 인치로 변환"""
@@ -47,7 +48,7 @@ class WordService:
                 break
             
             if page_table is None:
-                print(f"템플릿에서 테이블을 찾을 수 없습니다!")
+                logger.error("WordService", "템플릿에서 테이블을 찾을 수 없습니다!")
                 return False
             
             # 테이블 채우기
@@ -69,12 +70,20 @@ class WordService:
                             p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
                             run1 = p1.add_run()
                             
-                            # 메모리의 이미지를 Word에 삽입 (MM 단위를 인치로 변환)
-                            img_buffer = barcode_images[code]
-                            img_buffer.seek(0)
-                            run1.add_picture(img_buffer, 
-                                           width=Inches(self._mm_to_inches(self.barcode_width_mm)), 
-                                           height=Inches(self._mm_to_inches(self.barcode_height_mm)))
+                            # 바코드 이미지 가져오기 (파일 경로 또는 메모리 버퍼)
+                            barcode_data = barcode_images[code]
+                            
+                            if isinstance(barcode_data, str):
+                                # 파일 경로인 경우
+                                run1.add_picture(barcode_data, 
+                                               width=Inches(self._mm_to_inches(self.barcode_width_mm)), 
+                                               height=Inches(self._mm_to_inches(self.barcode_height_mm)))
+                            else:
+                                # BytesIO 메모리 버퍼인 경우
+                                barcode_data.seek(0)  # 버퍼 위치를 처음으로 리셋
+                                run1.add_picture(barcode_data, 
+                                               width=Inches(self._mm_to_inches(self.barcode_width_mm)), 
+                                               height=Inches(self._mm_to_inches(self.barcode_height_mm)))
                             
                             # 상품명과 가격을 위한 새 문단 추가
                             p2 = cell.add_paragraph()
@@ -107,7 +116,7 @@ class WordService:
                             
                             item_idx += 1
                         else:
-                            print(f"바코드 이미지를 찾을 수 없음: {code}")
+                            logger.warning("WordService", f"바코드 이미지를 찾을 수 없음: {code}")
                             # 바코드 이미지가 없어도 텍스트 정보는 추가
                             cell = page_table.cell(r, c)
                             cell.text = ""
@@ -149,11 +158,11 @@ class WordService:
             
             # 파일 저장
             page_doc.save(filename)
-            print(f"페이지 저장 완료: {filename} ({len(items_for_page)}개 라벨)")
+            logger.info("WordService", f"페이지 저장 완료: {filename} ({len(items_for_page)}개 라벨)")
             return True
             
         except Exception as e:
-            print(f"라벨 페이지 생성 실패: {e}")
+            logger.error("WordService", f"라벨 페이지 생성 실패: {e}")
             return False
 
     def get_table_max_size(self, template: str):
