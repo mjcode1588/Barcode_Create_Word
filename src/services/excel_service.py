@@ -405,6 +405,113 @@ class ExcelService:
         print(f"총 {len(items)}개 라벨 생성됨")
         return items
     
+    def update_type_id(self, type_name: str, new_type_id: int) -> bool:
+        """TYPE의 TYPE_ID 수정 (연관된 모든 상품 정보 포함)"""
+        if new_type_id in self.category_id_to_name and self.category_id_to_name[new_type_id] != type_name:
+            print(f"TYPE_ID {new_type_id}는 이미 사용 중입니다.")
+            return False
+        
+        try:
+            wb = load_workbook(self.file_path)
+            
+            # 기존 TYPE_ID 찾기
+            old_type_id = None
+            if "type" in wb.sheetnames:
+                type_ws = wb["type"]
+                for row in type_ws.iter_rows(min_row=2):
+                    if row[0].value == type_name:
+                        old_type_id = row[1].value
+                        row[1].value = new_type_id
+                        break
+            
+            if old_type_id is None:
+                print(f"TYPE '{type_name}'을 찾을 수 없습니다.")
+                wb.close()
+                return False
+            
+            # 상품 시트에서 해당 TYPE_ID를 사용하는 모든 상품 업데이트
+            if "product" in wb.sheetnames:
+                product_ws = wb["product"]
+                updated_count = 0
+                
+                for row in product_ws.iter_rows(min_row=2):
+                    if row[2].value == old_type_id:  # TYPE_ID 컬럼 (인덱스 2)
+                        row[2].value = new_type_id
+                        updated_count += 1
+                        
+                        # PRODUCT_ID가 있다면 바코드 번호도 업데이트
+                        if len(row) > 3 and row[3].value is not None:
+                            product_id = row[3].value
+                            new_barcode = f"{new_type_id}{str(product_id).zfill(6)}"
+                            # 바코드 번호는 별도 컬럼이 없으므로 Product 객체에서 계산됨
+                
+                print(f"{updated_count}개 상품의 TYPE_ID가 업데이트되었습니다.")
+            
+            wb.save(self.file_path)
+            wb.close()
+            
+            # 메모리 상의 매핑도 업데이트
+            self._load_categories()
+            print(f"TYPE_ID 수정 완료: '{type_name}' {old_type_id} -> {new_type_id}")
+            return True
+            
+        except Exception as e:
+            print(f"TYPE_ID 수정 실패: {e}")
+            return False
+
+    def add_type_with_id(self, type_name: str, type_id: int) -> bool:
+        """새 TYPE을 지정된 TYPE_ID로 추가"""
+        try:
+            if type_name in self.category_name_to_id:
+                print(f"'{type_name}' TYPE는 이미 존재합니다.")
+                return False
+            
+            if type_id in self.category_id_to_name:
+                print(f"TYPE_ID {type_id}는 이미 사용 중입니다.")
+                return False
+            
+            wb = load_workbook(self.file_path)
+            
+            if "type" not in wb.sheetnames:
+                type_ws = wb.create_sheet("type")
+                type_ws.append(["TYPE", "TYPE_ID"])
+            else:
+                type_ws = wb["type"]
+            
+            type_ws.append([type_name, type_id])
+            
+            wb.save(self.file_path)
+            wb.close()
+            
+            self.category_name_to_id[type_name] = type_id
+            self.category_id_to_name[type_id] = type_name
+            print(f"새 TYPE 추가됨: {type_name} (ID: {type_id})")
+            return True
+            
+        except Exception as e:
+            print(f"TYPE 추가 실패: {e}")
+            return False
+
+    def get_next_product_id(self, type_name: str) -> int:
+        """특정 TYPE의 다음 사용 가능한 PRODUCT_ID 반환"""
+        try:
+            products = self.read_products()
+            max_product_id = 0
+            
+            for product in products:
+                if product.type_name == type_name:
+                    try:
+                        product_id = int(getattr(product, "product_id", 0) or 0)
+                        max_product_id = max(max_product_id, product_id)
+                    except (ValueError, TypeError):
+                        continue
+            
+            return max_product_id + 1
+            
+        except Exception as e:
+            print(f"다음 PRODUCT_ID 조회 실패: {e}")
+            return 1
+
     def backup_file(self, backup_path: str = None) -> bool:
         """Excel 파일 백업"""
         try:

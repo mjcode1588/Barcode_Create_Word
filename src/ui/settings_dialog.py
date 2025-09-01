@@ -1,14 +1,28 @@
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QComboBox, QSpinBox, QDoubleSpinBox,
-    QDialogButtonBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QLabel, QGroupBox,QCheckBox
+    QDialog,
+    QVBoxLayout,
+    QFormLayout,
+    QComboBox,
+    QSpinBox,
+    QDoubleSpinBox,
+    QDialogButtonBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QLabel,
+    QGroupBox,
+    QCheckBox,
 )
 from PyQt6.QtCore import Qt
 import os
 
+
 class SettingsDialog(QDialog):
     """라벨 생성 세부 설정 다이얼로그"""
-    def __init__(self, templates, products, parent=None, template_area=None, cell_sizes=None):
+
+    def __init__(
+        self, templates, products, parent=None, template_area=None, cell_sizes=None
+    ):
         super().__init__(parent)
         self.setWindowTitle("라벨 생성 세부 설정")
         self.setMinimumSize(500, 600)
@@ -42,16 +56,15 @@ class SettingsDialog(QDialog):
         # 템플릿 변경 시 처리
         self.template_combo.currentIndexChanged.connect(self.on_template_changed)
 
-
         # 2. 바코드 설정 (MM 단위 통일, 템플릿 변경 시 자동 최적화)
         barcode_group = QGroupBox("바코드 설정 (단위: MM)")
         barcode_layout = QFormLayout()
-        
+
         # 설명 라벨 추가
         info_label = QLabel("※ 템플릿 변경 시 셀 크기에 맞춰 자동으로 최적화됩니다")
         info_label.setStyleSheet("color: #666; font-size: 11px;")
         barcode_layout.addRow(info_label)
-        
+
         self.module_width_spin = QDoubleSpinBox()
         self.module_width_spin.setDecimals(2)
         self.module_width_spin.setRange(0.2, 1.0)  # 최소값을 0.2mm로 증가
@@ -85,31 +98,35 @@ class SettingsDialog(QDialog):
         self.dpi_spin.setSingleStep(50)
         self.dpi_spin.setValue(300)
         barcode_layout.addRow("DPI:", self.dpi_spin)
-        
+
         barcode_group.setLayout(barcode_layout)
         layout.addWidget(barcode_group)
 
         # 3. 출력 설정
         output_group = QGroupBox("출력 설정")
         output_layout = QFormLayout()
-        
+
         # 파일 생성 방식 선택
         self.single_file_checkbox = QCheckBox("하나의 파일로 생성")
-        self.single_file_checkbox.setToolTip("체크하면 모든 라벨을 하나의 DOCX 파일로 합쳐서 생성합니다.\n" +
-                                           "체크하지 않으면 상품별로 개별 파일을 생성합니다.")
+        self.single_file_checkbox.setToolTip(
+            "체크하면 모든 라벨을 하나의 DOCX 파일로 합쳐서 생성합니다.\n"
+            + "체크하지 않으면 상품별로 개별 파일을 생성합니다."
+        )
         self.single_file_checkbox.setChecked(False)
-        
+
         # 단일 파일 생성 시 추가 정보 표시
         self.single_file_checkbox.stateChanged.connect(self._on_single_file_changed)
-        
+
         output_layout.addRow("파일 생성 방식:", self.single_file_checkbox)
-        
+
         # 단일 파일 생성 시 안내 라벨
-        self.single_file_info = QLabel("※ 하나의 파일로 생성 시 '통합_라벨.docx' 파일이 생성됩니다")
+        self.single_file_info = QLabel(
+            "※ 하나의 파일로 생성 시 '통합_라벨.docx' 파일이 생성됩니다"
+        )
         self.single_file_info.setStyleSheet("color: #666; font-size: 11px;")
         self.single_file_info.setVisible(False)
         output_layout.addRow(self.single_file_info)
-        
+
         output_group.setLayout(output_layout)
         layout.addWidget(output_group)
 
@@ -120,9 +137,18 @@ class SettingsDialog(QDialog):
         # 컬럼: 상품명 | 출력 개수 | Max 체크박스
         self.product_table.setColumnCount(3)
         self.product_table.setHorizontalHeaderLabels(["상품명", "출력 개수", "Max"])
-        self.product_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.product_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.product_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+
+        # 컬럼 너비 설정: 상품명은 비율로, 출력 개수와 Max는 고정 크기로
+        header = self.product_table.horizontalHeader()
+        header.setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )  # 상품명은 남은 공간 사용
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)  # 출력 개수는 고정
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # Max는 고정
+
+        # 고정 컬럼 너비 설정
+        self.product_table.setColumnWidth(1, 80)  # 출력 개수 컬럼
+        self.product_table.setColumnWidth(2, 70)  # Max 컬럼 (기존보다 넓게)
         self.product_table.setRowCount(len(self.products))
         self.product_table.verticalHeader().setDefaultSectionSize(36)
 
@@ -137,25 +163,37 @@ class SettingsDialog(QDialog):
             spin_box.setValue(1)
             self.product_table.setCellWidget(i, 1, spin_box)
 
-            # Max 체크박스
-            chk = QCheckBox("Max")
+            # Max 체크박스 - 가운데 정렬을 위한 컨테이너 위젯
+            from PyQt6.QtWidgets import QWidget, QHBoxLayout
+
+            checkbox_widget = QWidget()
+            checkbox_layout = QHBoxLayout(checkbox_widget)
+            checkbox_layout.setContentsMargins(0, 0, 0, 0)
+            checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            chk = QCheckBox()
             chk.setToolTip("체크하면 템플릿의 최대 라벨 수로 설정됩니다.")
             # 연결: row 인덱스 보존하려면 기본값 인자로 캡처
-            chk.stateChanged.connect(lambda state, row=i: self.on_max_checked(row, state))
-            self.product_table.setCellWidget(i, 2, chk)
-            self.max_checkboxes[i] = chk
+            chk.stateChanged.connect(
+                lambda state, row=i: self.on_max_checked(row, state)
+            )
 
+            checkbox_layout.addWidget(chk)
+            self.product_table.setCellWidget(i, 2, checkbox_widget)
+            self.max_checkboxes[i] = chk
 
         product_layout.addWidget(self.product_table)
         product_group.setLayout(product_layout)
         layout.addWidget(product_group)
 
         # 확인/취소 버튼
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
-        
+
         # 초기 설정
         self.update_max_label_and_checkboxes()
         # 첫 번째 템플릿에 대해 바코드 크기 자동 최적화
@@ -165,41 +203,75 @@ class SettingsDialog(QDialog):
     def get_current_template_max(self):
         """현재 선택된 템플릿에 대한 최대 라벨 수를 반환하거나 None."""
         idx = self.template_combo.currentIndex()
+        print(
+            f"DEBUG: get_current_template_max - idx: {idx}, template_table_size_list: {self.template_table_size_list}"
+        )
+
         if self.template_table_size_list is None:
+            print("DEBUG: template_table_size_list is None")
             return None
 
         # dict로 전달된 경우: 키가 전체 경로 또는 basename 일 수 있음
         if isinstance(self.template_table_size_list, dict):
+            print("DEBUG: template_table_size_list is dict")
             # 우선 전체 경로로 시도
-            selected_path = self.templates[idx] if 0 <= idx < len(self.templates) else None
+            selected_path = (
+                self.templates[idx] if 0 <= idx < len(self.templates) else None
+            )
+            print(f"DEBUG: selected_path: {selected_path}")
             if selected_path and selected_path in self.template_table_size_list:
-                return self.template_table_size_list[selected_path]
+                result = self.template_table_size_list[selected_path]
+                print(f"DEBUG: Found by full path: {result}")
+                return result
             # basename으로도 시도
             base = os.path.basename(selected_path) if selected_path else None
+            print(f"DEBUG: basename: {base}")
             if base and base in self.template_table_size_list:
-                return self.template_table_size_list[base]
+                result = self.template_table_size_list[base]
+                print(f"DEBUG: Found by basename: {result}")
+                return result
             # 마지막으로 index 기반으로 찾기 (값이 리스트처럼 들어있을 때)
+            print("DEBUG: Not found in dict")
             return None
 
         # list/tuple 로 전달된 경우: 길이가 templates와 같으면 인덱스로 반환
         if isinstance(self.template_table_size_list, (list, tuple)):
+            print(
+                f"DEBUG: template_table_size_list is list/tuple, length: {len(self.template_table_size_list)}"
+            )
             if 0 <= idx < len(self.template_table_size_list):
-                return self.template_table_size_list[idx]
+                result = self.template_table_size_list[idx]
+                print(f"DEBUG: Found by index: {result}")
+                return result
+            print("DEBUG: Index out of range")
             return None
 
         # 단일 숫자인 경우
         try:
-            return int(self.template_table_size_list)
-        except Exception:
+            result = int(self.template_table_size_list)
+            print(f"DEBUG: Single number: {result}")
+            return result
+        except Exception as e:
+            print(f"DEBUG: Failed to convert to int: {e}")
             return None
 
     def update_max_label_and_checkboxes(self):
         max_val = self.get_current_template_max()
         if max_val is None:
             self.template_max_label.setText("-")
-            # 템플릿에 최대값 정보가 없으면 체크박스 비활성화
-            for chk in self.max_checkboxes.values():
+            # 템플릿에 최대값 정보가 없으면 체크박스 비활성화 및 체크 해제
+            for row, chk in self.max_checkboxes.items():
                 chk.setEnabled(False)
+                if chk.isChecked():
+                    chk.blockSignals(True)
+                    chk.setChecked(False)
+                    chk.blockSignals(False)
+                    # 스핀박스도 활성화하고 기본값으로 복원
+                    spin = self.product_table.cellWidget(row, 1)
+                    if isinstance(spin, QSpinBox):
+                        spin.setEnabled(True)
+                        spin.setMaximum(999)
+                        spin.setValue(1)
         else:
             self.template_max_label.setText(str(max_val))
             for row, chk in self.max_checkboxes.items():
@@ -233,7 +305,9 @@ class SettingsDialog(QDialog):
 
         # dict 형태일 때: 전체 경로 우선, basename 다음으로 시도
         if isinstance(self.cell_sizes, dict):
-            selected_path = self.templates[index] if 0 <= index < len(self.templates) else None
+            selected_path = (
+                self.templates[index] if 0 <= index < len(self.templates) else None
+            )
             if selected_path and selected_path in self.cell_sizes:
                 cell_size = self.cell_sizes[selected_path]
             else:
@@ -247,7 +321,9 @@ class SettingsDialog(QDialog):
                 cell_size = self.cell_sizes[index]
             else:
                 # 경우에 따라 cell_sizes 자체가 (w,h) 한쌍일 수도 있음
-                if len(self.cell_sizes) == 2 and all(isinstance(x, (int, float)) for x in self.cell_sizes):
+                if len(self.cell_sizes) == 2 and all(
+                    isinstance(x, (int, float)) for x in self.cell_sizes
+                ):
                     cell_size = tuple(self.cell_sizes)
 
         # 성공적으로 셀 크기 정보를 얻었으면 바코드 크기를 최적화 (모든 값 MM 단위)
@@ -263,15 +339,15 @@ class SettingsDialog(QDialog):
                 margin_mm = 6.0  # 좌우 여백 총합 (quiet_zone 고려)
                 available_width_mm = max(10.0, cell_w_mm - margin_mm)
                 optimal_module_width_mm = available_width_mm / barcode_modules
-                
+
                 # 2. 모듈 높이: 셀 높이에서 텍스트 영역 제외
                 text_area_mm = 6.0
                 available_height_mm = max(8.0, cell_h_mm - text_area_mm)
                 optimal_module_height_mm = available_height_mm
-                
+
                 # 3. 여백: 바코드 라이브러리 최소 요구사항 고려
                 optimal_quiet_zone_mm = max(2.5, min(4.0, cell_w_mm * 0.08))
-                
+
                 # 바코드 라이브러리 제약에 맞는 안전한 범위로 제한
                 final_module_width = max(0.2, min(1.0, optimal_module_width_mm))
                 final_module_height = max(5.0, min(25.0, optimal_module_height_mm))
@@ -281,62 +357,82 @@ class SettingsDialog(QDialog):
                 self.module_width_spin.setValue(round(final_module_width, 2))
                 self.module_height_spin.setValue(round(final_module_height, 1))
                 self.quiet_zone_spin.setValue(round(final_quiet_zone, 1))
-                
+
                 print(f"바코드 크기 자동 최적화 완료:")
                 print(f"  셀 크기: {cell_w_mm:.1f}mm x {cell_h_mm:.1f}mm")
                 print(f"  모듈 너비: {final_module_width:.2f}mm")
                 print(f"  모듈 높이: {final_module_height:.1f}mm")
                 print(f"  좌우 여백: {final_quiet_zone:.1f}mm")
-                
+
         except Exception as e:
             print(f"바코드 크기 자동 최적화 실패: {e}")
             # 실패 시 조용히 무시 (기존 값 유지)
-    
+
     def _on_single_file_changed(self, state):
         """단일 파일 생성 체크박스 상태 변경 시 처리"""
         if state == Qt.CheckState.Checked:
             self.single_file_info.setVisible(True)
         else:
             self.single_file_info.setVisible(False)
-    
+
     def on_max_checked(self, row, state):
         """특정 행의 Max 체크박스가 변경되었을 때 처리"""
+        print(f"DEBUG: on_max_checked called - row: {row}, state: {state}")
+
         max_val = self.get_current_template_max()
+        print(f"DEBUG: max_val = {max_val}")
+
         spin = self.product_table.cellWidget(row, 1)
         chk = self.max_checkboxes.get(row)
+
         if not isinstance(spin, QSpinBox) or chk is None:
+            print(f"DEBUG: Invalid widgets - spin: {type(spin)}, chk: {chk}")
             return
 
-        if state == Qt.CheckState.Checked:
+        if state == Qt.CheckState.Checked.value:  # state는 정수값으로 전달됨
+            print(f"DEBUG: Checkbox checked")
             if max_val is None:
+                print(f"DEBUG: No max_val, unchecking")
                 # 최대값 정보 없으면 바로 체크 해제
                 chk.blockSignals(True)
                 chk.setChecked(False)
                 chk.blockSignals(False)
                 return
             # 스핀박스를 최대값으로 설정하고 편집 비활성화
+            print(f"DEBUG: Setting spin to max_val: {max_val}")
             spin.setMaximum(max_val)
             spin.setValue(max_val)
             spin.setEnabled(False)
         else:
+            print(f"DEBUG: Checkbox unchecked")
             # 체크 해제: 스핀박스 편집 가능 및 기본 최대값 복원
             spin.setEnabled(True)
             spin.setMaximum(999)
+            # 현재 값이 999보다 크면 1로 리셋
+            if spin.value() > 999:
+                spin.setValue(1)
 
     def get_settings(self):
         """설정된 값들을 반환하는 메서드"""
-        
+
         # 선택된 템플릿 경로 찾기
         selected_template_name = self.template_combo.currentText()
-        selected_template_path = next((t for t in self.templates if os.path.basename(t) == selected_template_name), None)
+        selected_template_path = next(
+            (
+                t
+                for t in self.templates
+                if os.path.basename(t) == selected_template_name
+            ),
+            None,
+        )
 
         # 바코드 설정
         barcode_options = {
-            'module_width': self.module_width_spin.value(),
-            'module_height': self.module_height_spin.value(),
-            'quiet_zone': self.quiet_zone_spin.value(),
-            'font_size': self.font_size_spin.value(),
-            'dpi': self.dpi_spin.value(),
+            "module_width": self.module_width_spin.value(),
+            "module_height": self.module_height_spin.value(),
+            "quiet_zone": self.quiet_zone_spin.value(),
+            "font_size": self.font_size_spin.value(),
+            "dpi": self.dpi_spin.value(),
         }
 
         # 상품별 출력 개수
@@ -350,5 +446,5 @@ class SettingsDialog(QDialog):
             "quantities": quantities,
             "barcode_options": barcode_options,
             "max_label_count": self.template_max_label.text(),
-            "single_file": self.single_file_checkbox.isChecked()
+            "single_file": self.single_file_checkbox.isChecked(),
         }

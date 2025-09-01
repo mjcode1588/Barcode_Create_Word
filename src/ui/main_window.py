@@ -294,6 +294,9 @@ class MainWindow(QMainWindow):
             self.data_path = self.file_service.get_data_path()
             self.excel_service = ExcelService(self.data_path)
             
+            # ProductWidget에 ExcelService 설정
+            self.product_widget.set_excel_service(self.excel_service)
+            
             self.load_products_from_excel()
             
             self.log_message("서비스 초기화 완료")
@@ -439,6 +442,8 @@ class MainWindow(QMainWindow):
                 
                 if products or categories:
                     self.excel_service = temp_excel_service
+                    # ProductWidget에 새로운 ExcelService 설정
+                    self.product_widget.set_excel_service(self.excel_service)
                     self.products = products
                     self.selected_products.clear()
                     self.update_products_table()

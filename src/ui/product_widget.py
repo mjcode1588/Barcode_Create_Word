@@ -1,60 +1,73 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-                               QLabel, QLineEdit, QCheckBox, QPushButton, QGroupBox, QComboBox,
-                               QSpinBox)
+from PyQt6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QLineEdit,
+    QCheckBox,
+    QPushButton,
+    QGroupBox,
+    QComboBox,
+    QSpinBox,
+)
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QValidator, QIntValidator
 from src.models.product import Product
 from typing import List
 
+
 class PriceValidator(QValidator):
     """가격 입력 검증기 (숫자만 허용)"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-    
+
     def validate(self, input_str, pos):
         if not input_str:
             return QValidator.State.Acceptable, input_str, pos
-        
+
         # 숫자와 쉼표만 허용
-        if all(c.isdigit() or c == ',' for c in input_str):
+        if all(c.isdigit() or c == "," for c in input_str):
             return QValidator.State.Acceptable, input_str, pos
         else:
             return QValidator.State.Invalid, input_str, pos
 
+
 class ProductWidget(QWidget):
     """상품 정보 입력 위젯"""
-    
+
     productAdded = pyqtSignal(Product)
     productUpdated = pyqtSignal(Product)
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_product = None
         self.categories = []  # 종류 목록
+        self.excel_service = None  # ExcelService 참조
         self.setup_ui()
-    
+
     def setup_ui(self):
         """UI 구성"""
         layout = QVBoxLayout()
-        
+
         # 제목
         title_label = QLabel("상품 정보 입력")
         title_label.setProperty("class", "title")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_label)
-        
+
         # 상품 정보 입력 그룹
         product_group = QGroupBox("상품 정보")
         product_layout = QGridLayout()
-        
+
         # 상품명
         self.name_label = QLabel("상품명:")
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("상품명을 입력하세요")
         product_layout.addWidget(self.name_label, 0, 0)
         product_layout.addWidget(self.name_edit, 0, 1)
-        
+
         # 가격
         self.price_label = QLabel("가격:")
         self.price_edit = QLineEdit()
@@ -62,60 +75,80 @@ class ProductWidget(QWidget):
         self.price_edit.setValidator(PriceValidator())
         product_layout.addWidget(self.price_label, 1, 0)
         product_layout.addWidget(self.price_edit, 1, 1)
-        
-        # 제품 ID (정수)
-        self.product_id_label = QLabel("제품ID:")
-        self.product_id_spin = QSpinBox()
-        self.product_id_spin.setRange(0, 999999999)
-        self.product_id_spin.setValue(0)
-        product_layout.addWidget(self.product_id_label, 2, 0)
-        product_layout.addWidget(self.product_id_spin, 2, 1)
-        
+
         # 종류 (콤보박스로 변경)
         self.category_label = QLabel("종류:")
         self.category_combo = QComboBox()
         self.category_combo.setEditable(True)  # 직접 입력도 가능
         self.category_combo.setPlaceholderText("종류를 선택하세요")
-        product_layout.addWidget(self.category_label, 3, 0)
-        product_layout.addWidget(self.category_combo, 3, 1)
-        
+        self.category_combo.currentTextChanged.connect(self.on_category_changed)
+        product_layout.addWidget(self.category_label, 2, 0)
+        product_layout.addWidget(self.category_combo, 2, 1)
+
+        # 제품 ID (정수) - 종류 아래로 이동
+        self.product_id_label = QLabel("제품ID:")
+        self.product_id_spin = QSpinBox()
+        self.product_id_spin.setRange(0, 999999999)
+        self.product_id_spin.setValue(0)
+        product_layout.addWidget(self.product_id_label, 3, 0)
+        product_layout.addWidget(self.product_id_spin, 3, 1)
+
         product_group.setLayout(product_layout)
         layout.addWidget(product_group)
-        
+
         # 버튼 그룹
         button_layout = QHBoxLayout()
-        
+
         self.add_button = QPushButton("상품 추가")
         self.add_button.clicked.connect(self.add_product)
-        
+
         self.update_button = QPushButton("상품 수정")
         self.update_button.clicked.connect(self.update_product)
         self.update_button.setEnabled(False)
-        
+
         self.clear_button = QPushButton("입력 초기화")
         self.clear_button.clicked.connect(self.clear_inputs)
-        
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.update_button)
         button_layout.addWidget(self.clear_button)
-        
+
         layout.addLayout(button_layout)
-        
+
         # 상태 표시
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet("color: #666666; font-style: italic;")
         layout.addWidget(self.status_label)
-        
+
         self.setLayout(layout)
-    
+
     def set_categories(self, categories: List[str]):
         """종류 목록 설정"""
         self.categories = categories
         self.category_combo.clear()
         self.category_combo.addItems(categories)
         print(f"종류 목록 설정됨: {categories}")
-    
+
+    def set_excel_service(self, excel_service):
+        """ExcelService 참조 설정"""
+        self.excel_service = excel_service
+
+    def on_category_changed(self, category_text: str):
+        """종류가 변경되었을 때 제품 ID를 자동으로 설정"""
+        if not category_text or not self.excel_service:
+            return
+
+        # 수정 모드가 아닐 때만 자동 설정
+        if self.current_product is None:
+            try:
+                next_id = self.excel_service.get_next_product_id(category_text)
+                self.product_id_spin.setValue(next_id)
+                print(f"종류 '{category_text}'의 다음 제품 ID: {next_id}")
+            except Exception as e:
+                print(f"제품 ID 자동 설정 실패: {e}")
+                self.product_id_spin.setValue(1)
+
     def add_product(self):
         """상품 추가"""
         try:
@@ -126,12 +159,12 @@ class ProductWidget(QWidget):
                 self.show_status("상품이 추가되었습니다.", "success")
         except ValueError as e:
             self.show_status(f"오류: {str(e)}", "error")
-    
+
     def update_product(self):
         """상품 수정"""
         if not self.current_product:
             return
-        
+
         try:
             updated_product = self._create_product_from_inputs()
             if updated_product:
@@ -143,7 +176,7 @@ class ProductWidget(QWidget):
                 self.show_status("상품이 수정되었습니다.", "success")
         except ValueError as e:
             self.show_status(f"오류: {str(e)}", "error")
-    
+
     def clear_form(self):
         """입력 폼 초기화 (내부 로직 및 외부 호출용)"""
         self.name_edit.clear()
@@ -160,7 +193,7 @@ class ProductWidget(QWidget):
         """입력 필드 초기화 (사용자 액션)"""
         self.clear_form()
         self.show_status("입력 필드가 초기화되었습니다.", "info")
-    
+
     def _create_product_from_inputs(self) -> Product:
         """입력 필드에서 Product 객체 생성"""
         name = self.name_edit.text().strip()
@@ -169,19 +202,36 @@ class ProductWidget(QWidget):
         product_id = int(self.product_id_spin.value())
 
         # copy = self.copy_checkbox.isChecked()  # 현재 복사 기능 미사용
-        
+
         if not name:
             raise ValueError("상품명을 입력해주세요.")
-        
+
         if not price:
             raise ValueError("가격을 입력해주세요.")
-        
+
         if not typename:
             raise ValueError("종류를 입력해주세요.")
-        
-        # Product 생성: product_id 포함, copy 기본 False
-        return Product(name=name, price=price, type_name=typename, product_id=product_id)
-    
+
+        # type_id 계산
+        type_id = -1  # 기본값 (새 종류인 경우)
+        if self.excel_service:
+            categories = self.excel_service.get_categories()
+            if typename in categories:
+                type_id = categories[typename]
+
+        # barcode_num 계산
+        barcode_num = f"{type_id}{str(product_id).zfill(6)}" if type_id != -1 else ""
+
+        # Product 생성: 모든 필수 인수 포함
+        return Product(
+            name=name,
+            price=price,
+            type_name=typename,
+            product_id=product_id,
+            type_id=type_id,
+            barcode_num=barcode_num,
+        )
+
     def edit_product(self, product: Product):
         """상품 정보로 입력 필드 채우기 (수정 모드)"""
         self.current_product = product
@@ -193,9 +243,11 @@ class ProductWidget(QWidget):
         except Exception:
             self.product_id_spin.setValue(0)
         # category attribute 이름이 모델에 따라 다를 수 있으므로 안전하게 처리
-        self.category_combo.setCurrentText(getattr(product, "category", getattr(product, "type_name", "")))
+        self.category_combo.setCurrentText(
+            getattr(product, "category", getattr(product, "type_name", ""))
+        )
         # self.copy_checkbox.setChecked(getattr(product, "copy", False))
-        
+
         self.add_button.setEnabled(False)
         self.update_button.setEnabled(True)
         self.show_status("상품 정보를 수정하세요.", "info")
@@ -203,7 +255,7 @@ class ProductWidget(QWidget):
     def show_status(self, message: str, status_type: str = "info"):
         """상태 메시지 표시"""
         self.status_label.setText(message)
-        
+
         # 상태에 따른 스타일 적용
         if status_type == "success":
             self.status_label.setStyleSheet("color: #107c10; font-weight: bold;")
@@ -211,7 +263,7 @@ class ProductWidget(QWidget):
             self.status_label.setStyleSheet("color: #d83b01; font-weight: bold;")
         else:
             self.status_label.setStyleSheet("color: #666666; font-style: italic;")
-    
+
     def is_input_valid(self) -> bool:
         """입력 유효성 검사"""
         try:

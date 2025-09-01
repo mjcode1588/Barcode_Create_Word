@@ -25,10 +25,10 @@ try:
         pal = QPalette()
 
         pal.setColor(QPalette.ColorRole.Window, QColor("#ffffff"))
-        pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))           # 입력창/표 바탕
+        pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))  # 입력창/표 바탕
         pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#f6f6f6"))
-        pal.setColor(QPalette.ColorRole.Text, QColor("#000000"))           # 일반 텍스트
-        pal.setColor(QPalette.ColorRole.WindowText, QColor("#000000"))     # 라벨 등
+        pal.setColor(QPalette.ColorRole.Text, QColor("#000000"))  # 일반 텍스트
+        pal.setColor(QPalette.ColorRole.WindowText, QColor("#000000"))  # 라벨 등
         pal.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
         pal.setColor(QPalette.ColorRole.ButtonText, QColor("#000000"))
         pal.setColor(QPalette.ColorRole.Highlight, QColor("#0078d4"))
@@ -38,7 +38,6 @@ try:
         pal.setColor(QPalette.ColorRole.PlaceholderText, QColor("#666666"))
 
         app.setPalette(pal)
-
 
     def main():
         """메인 함수"""
@@ -75,5 +74,6 @@ except ImportError as e:
 except Exception as e:
     print(f"오류 발생: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
