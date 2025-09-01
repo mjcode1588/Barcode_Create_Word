@@ -43,25 +43,37 @@ class SettingsDialog(QDialog):
         self.template_combo.currentIndexChanged.connect(self.on_template_changed)
 
 
-        # 2. 바코드 설정
-        barcode_group = QGroupBox("바코드 설정")
+        # 2. 바코드 설정 (MM 단위 통일, 템플릿 변경 시 자동 최적화)
+        barcode_group = QGroupBox("바코드 설정 (단위: MM)")
         barcode_layout = QFormLayout()
+        
+        # 설명 라벨 추가
+        info_label = QLabel("※ 템플릿 변경 시 셀 크기에 맞춰 자동으로 최적화됩니다")
+        info_label.setStyleSheet("color: #666; font-size: 11px;")
+        barcode_layout.addRow(info_label)
+        
         self.module_width_spin = QDoubleSpinBox()
         self.module_width_spin.setDecimals(2)
-        self.module_width_spin.setSingleStep(0.1)
-        self.module_width_spin.setValue(0.2)
+        self.module_width_spin.setRange(0.2, 1.0)  # 최소값을 0.2mm로 증가
+        self.module_width_spin.setSingleStep(0.05)
+        self.module_width_spin.setValue(0.3)  # 기본값을 0.3mm로 증가
+        self.module_width_spin.setToolTip("바코드 한 모듈의 너비 (0.2-1.0mm)")
         barcode_layout.addRow("모듈 너비 (mm):", self.module_width_spin)
 
         self.module_height_spin = QDoubleSpinBox()
         self.module_height_spin.setDecimals(1)
+        self.module_height_spin.setRange(5.0, 25.0)
         self.module_height_spin.setSingleStep(1.0)
         self.module_height_spin.setValue(15.0)
-        barcode_layout.addRow("모듈 높이 (mm):", self.module_height_spin)
+        self.module_height_spin.setToolTip("바코드 높이 (5.0-25.0mm)")
+        barcode_layout.addRow("바코드 높이 (mm):", self.module_height_spin)
 
         self.quiet_zone_spin = QDoubleSpinBox()
         self.quiet_zone_spin.setDecimals(1)
+        self.quiet_zone_spin.setRange(2.5, 5.0)  # 최소값을 2.5mm로 증가
         self.quiet_zone_spin.setSingleStep(0.5)
-        self.quiet_zone_spin.setValue(6.5)
+        self.quiet_zone_spin.setValue(3.0)  # 기본값을 3.0mm로 증가
+        self.quiet_zone_spin.setToolTip("바코드 좌우 여백 (2.5-5.0mm)")
         barcode_layout.addRow("좌우 여백 (mm):", self.quiet_zone_spin)
 
         self.font_size_spin = QSpinBox()
@@ -77,7 +89,31 @@ class SettingsDialog(QDialog):
         barcode_group.setLayout(barcode_layout)
         layout.addWidget(barcode_group)
 
-        # 3. 상품별 출력 개수 설정
+        # 3. 출력 설정
+        output_group = QGroupBox("출력 설정")
+        output_layout = QFormLayout()
+        
+        # 파일 생성 방식 선택
+        self.single_file_checkbox = QCheckBox("하나의 파일로 생성")
+        self.single_file_checkbox.setToolTip("체크하면 모든 라벨을 하나의 DOCX 파일로 합쳐서 생성합니다.\n" +
+                                           "체크하지 않으면 상품별로 개별 파일을 생성합니다.")
+        self.single_file_checkbox.setChecked(False)
+        
+        # 단일 파일 생성 시 추가 정보 표시
+        self.single_file_checkbox.stateChanged.connect(self._on_single_file_changed)
+        
+        output_layout.addRow("파일 생성 방식:", self.single_file_checkbox)
+        
+        # 단일 파일 생성 시 안내 라벨
+        self.single_file_info = QLabel("※ 하나의 파일로 생성 시 '통합_라벨.docx' 파일이 생성됩니다")
+        self.single_file_info.setStyleSheet("color: #666; font-size: 11px;")
+        self.single_file_info.setVisible(False)
+        output_layout.addRow(self.single_file_info)
+        
+        output_group.setLayout(output_layout)
+        layout.addWidget(output_group)
+
+        # 4. 상품별 출력 개수 설정
         product_group = QGroupBox("상품별 출력 개수")
         product_layout = QVBoxLayout()
         self.product_table = QTableWidget()
@@ -119,7 +155,12 @@ class SettingsDialog(QDialog):
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
+        
+        # 초기 설정
         self.update_max_label_and_checkboxes()
+        # 첫 번째 템플릿에 대해 바코드 크기 자동 최적화
+        if self.templates:
+            self.template_auto_size(0)
 
     def get_current_template_max(self):
         """현재 선택된 템플릿에 대한 최대 라벨 수를 반환하거나 None."""
@@ -181,9 +222,11 @@ class SettingsDialog(QDialog):
     def on_template_changed(self, index):
         # 템플릿 변경 시 라벨과 체크박스 상태 업데이트
         self.update_max_label_and_checkboxes()
-        # self.template_auto_size(index)
+        # 바코드 크기 자동 최적화
+        self.template_auto_size(index)
 
     def template_auto_size(self, index):
+        """템플릿 변경 시 셀 크기에 맞춰 바코드 크기를 자동 최적화 (MM 단위 통일)"""
         cell_size = None
         if self.cell_sizes is None:
             return
@@ -207,22 +250,55 @@ class SettingsDialog(QDialog):
                 if len(self.cell_sizes) == 2 and all(isinstance(x, (int, float)) for x in self.cell_sizes):
                     cell_size = tuple(self.cell_sizes)
 
-        # 성공적으로 셀 크기 정보를 얻었으면 module 크기 설정
+        # 성공적으로 셀 크기 정보를 얻었으면 바코드 크기를 최적화 (모든 값 MM 단위)
         try:
             if cell_size and len(cell_size) >= 2:
-                cell_w = float(cell_size[0])
-                cell_h = float(cell_size[1])
+                cell_w_mm = float(cell_size[0])  # 셀 너비 (MM)
+                cell_h_mm = float(cell_size[1])  # 셀 높이 (MM)
 
-                # 요구사항: width는 셀 너비에서 4mm 빼서 설정, height는 셀 높이의 절반으로 설정
-                new_module_width = max(0.01, cell_w - 4.0)   # 최소값 보장
-                new_module_height = max(0.01, cell_h / 2.0)  # 최소값 보장
+                # 바코드 최적 크기 계산 (MM 단위, 바코드 라이브러리 제약 고려)
+                # 1. 모듈 너비: 셀 너비에서 여백 제외하고 바코드 길이로 나눔
+                # 일반적인 Code128 바코드는 약 95개 모듈로 구성
+                barcode_modules = 95
+                margin_mm = 6.0  # 좌우 여백 총합 (quiet_zone 고려)
+                available_width_mm = max(10.0, cell_w_mm - margin_mm)
+                optimal_module_width_mm = available_width_mm / barcode_modules
+                
+                # 2. 모듈 높이: 셀 높이에서 텍스트 영역 제외
+                text_area_mm = 6.0
+                available_height_mm = max(8.0, cell_h_mm - text_area_mm)
+                optimal_module_height_mm = available_height_mm
+                
+                # 3. 여백: 바코드 라이브러리 최소 요구사항 고려
+                optimal_quiet_zone_mm = max(2.5, min(4.0, cell_w_mm * 0.08))
+                
+                # 바코드 라이브러리 제약에 맞는 안전한 범위로 제한
+                final_module_width = max(0.2, min(1.0, optimal_module_width_mm))
+                final_module_height = max(5.0, min(25.0, optimal_module_height_mm))
+                final_quiet_zone = max(2.5, min(5.0, optimal_quiet_zone_mm))
 
                 # 스핀박스에 반영 (소수 자릿수에 맞춰 반올림)
-                self.module_width_spin.setValue(round(new_module_width, 2))
-                self.module_height_spin.setValue(round(new_module_height, 1))
-        except Exception:
+                self.module_width_spin.setValue(round(final_module_width, 2))
+                self.module_height_spin.setValue(round(final_module_height, 1))
+                self.quiet_zone_spin.setValue(round(final_quiet_zone, 1))
+                
+                print(f"바코드 크기 자동 최적화 완료:")
+                print(f"  셀 크기: {cell_w_mm:.1f}mm x {cell_h_mm:.1f}mm")
+                print(f"  모듈 너비: {final_module_width:.2f}mm")
+                print(f"  모듈 높이: {final_module_height:.1f}mm")
+                print(f"  좌우 여백: {final_quiet_zone:.1f}mm")
+                
+        except Exception as e:
+            print(f"바코드 크기 자동 최적화 실패: {e}")
             # 실패 시 조용히 무시 (기존 값 유지)
-            pass
+    
+    def _on_single_file_changed(self, state):
+        """단일 파일 생성 체크박스 상태 변경 시 처리"""
+        if state == Qt.CheckState.Checked:
+            self.single_file_info.setVisible(True)
+        else:
+            self.single_file_info.setVisible(False)
+    
     def on_max_checked(self, row, state):
         """특정 행의 Max 체크박스가 변경되었을 때 처리"""
         max_val = self.get_current_template_max()
@@ -273,5 +349,6 @@ class SettingsDialog(QDialog):
             "template": selected_template_path,
             "quantities": quantities,
             "barcode_options": barcode_options,
-            "max_label_count": self.template_max_label.text()
+            "max_label_count": self.template_max_label.text(),
+            "single_file": self.single_file_checkbox.isChecked()
         }

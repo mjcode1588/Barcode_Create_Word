@@ -41,6 +41,23 @@ class WorkerThread(QThread):
             
             # Create a new BarcodeGenerator with the options from the settings dialog
             barcode_generator = BarcodeGenerator(self.settings['barcode_options'])
+            
+            # Word 서비스에 바코드 크기 설정 (셀 크기에 맞춰 최적화)
+            template_path = self.settings['template']
+            if template_path:
+                cell_size = self.word_service.get_cell_size_mm(template_path)
+                if cell_size and cell_size[0] > 0 and cell_size[1] > 0:
+                    # 셀 크기에 맞춰 바코드 크기 계산 (MM 단위 통일)
+                    cell_w_mm, cell_h_mm = cell_size
+                    
+                    # 바코드 너비: 셀 너비에서 좌우 여백(6mm) 제외
+                    barcode_w_mm = max(20.0, min(cell_w_mm - 6.0, 50.0))
+                    
+                    # 바코드 높이: 셀 높이에서 텍스트 영역(8mm) 제외  
+                    barcode_h_mm = max(10.0, min(cell_h_mm - 8.0, 25.0))
+                    
+                    self.word_service.set_barcode_size_mm(barcode_w_mm, barcode_h_mm)
+                    print(f"셀 크기 기반 바코드 크기 설정: {barcode_w_mm:.1f}mm x {barcode_h_mm:.1f}mm")
 
             items_to_generate = []
             for product in self.products:
@@ -58,8 +75,15 @@ class WorkerThread(QThread):
             
             self.status_updated.emit("Word 문서 생성 중...")
             self.word_service.template_file = self.settings['template']
-            self.status_updated.emit(f"items : {len(items)}개, barcode_images : {len(barcode_images)} 페이지 생성 중...")
-            files_created = self.word_service.generate_label_documents(items, barcode_images)
+            
+            # 단일 파일 생성 여부 확인
+            if self.settings.get('single_file', False):
+                self.status_updated.emit(f"통합 문서 생성 중... ({len(items)}개 라벨)")
+                files_created = self.word_service.generate_single_label_document(items, barcode_images)
+            else:
+                self.status_updated.emit(f"개별 문서 생성 중... ({len(items)}개 라벨, {len(barcode_images)}개 상품)")
+                files_created = self.word_service.generate_label_documents(items, barcode_images)
+            
             self.progress_updated.emit(90)
             
             self.status_updated.emit("작업 완료!")

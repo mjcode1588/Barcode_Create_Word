@@ -63,9 +63,6 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked {
     background-color: #0078d4;
     border-color: #0078d4;
-    background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSJ3aGl0ZSIgZD0iTTkgMTYuMTdMNC44MyAxMmwtMS40MiAxLjQxTDkgMTkgMjEgN2wtMS40MS0xLjQxeiIvPjwvc3ZnPg==);
-    background-repeat: no-repeat;
-    background-position: center;
 }
 
 QTableWidget {

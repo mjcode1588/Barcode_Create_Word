@@ -11,11 +11,22 @@ class WordService:
     
     def __init__(self, template_file: str = "3677.docx"):
         self.template_file = template_file
-        self.barcode_width = 1.2
-        self.barcode_height = 0.6
+        # 바코드 크기 (MM 단위로 통일)
+        self.barcode_width_mm = 30.0  # 기본 30mm
+        self.barcode_height_mm = 15.0  # 기본 15mm
         self.text_font_size = 0.08
         self.font_name = "맑은 고딕"
         self.highlight_color = RGBColor(255, 255, 0)
+    
+    def set_barcode_size_mm(self, width_mm: float, height_mm: float):
+        """바코드 크기를 MM 단위로 설정"""
+        self.barcode_width_mm = width_mm
+        self.barcode_height_mm = height_mm
+        print(f"바코드 크기 설정: {width_mm:.1f}mm x {height_mm:.1f}mm")
+    
+    def _mm_to_inches(self, mm: float) -> float:
+        """MM를 인치로 변환"""
+        return mm / 25.4
     
     def create_label_page(self, items_for_page: List[Tuple[str, str, str, str]], 
                          page_name: str, barcode_images: dict, output_dir: str = "output") -> bool:
@@ -58,11 +69,12 @@ class WordService:
                             p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
                             run1 = p1.add_run()
                             
-                            # 메모리의 이미지를 Word에 삽입
+                            # 메모리의 이미지를 Word에 삽입 (MM 단위를 인치로 변환)
                             img_buffer = barcode_images[code]
                             img_buffer.seek(0)
-                            run1.add_picture(img_buffer, width=Inches(self.barcode_width), 
-                                           height=Inches(self.barcode_height))
+                            run1.add_picture(img_buffer, 
+                                           width=Inches(self._mm_to_inches(self.barcode_width_mm)), 
+                                           height=Inches(self._mm_to_inches(self.barcode_height_mm)))
                             
                             # 상품명과 가격을 위한 새 문단 추가
                             p2 = cell.add_paragraph()
@@ -204,6 +216,97 @@ class WordService:
         print(f"총 {len(items)}개 라벨 처리됨")
         
         return total_files_created
+    
+    def generate_single_label_document(self, items: List[Tuple[str, str, str, str]], 
+                                     barcode_images: dict, output_dir: str = "output") -> int:
+        """모든 라벨을 하나의 문서로 생성 (모든 상품의 라벨을 순서대로 배치)"""
+        if not items:
+            return 0
+        
+        print(f"통합 문서 생성 시작 - 총 {len(items)}개 라벨")
+        
+        # 첫 번째 페이지 생성
+        pages_created = []
+        current_items = []
+        
+        # 템플릿에서 한 페이지당 라벨 수 계산
+        try:
+            template_doc = Document(self.template_file)
+            template_table = None
+            for tbl in template_doc.tables:
+                template_table = tbl
+                break
+            
+            if template_table is None:
+                print("템플릿에서 테이블을 찾을 수 없습니다!")
+                return 0
+            
+            rows_per_page = len(template_table.rows)
+            cols_per_page = len(template_table.columns)
+            labels_per_page = rows_per_page * cols_per_page
+            
+            print(f"템플릿 정보: {rows_per_page}행 x {cols_per_page}열 = {labels_per_page}개 라벨/페이지")
+            
+        except Exception as e:
+            print(f"템플릿 분석 실패: {e}")
+            return 0
+        
+        # 라벨들을 페이지별로 나누어 처리
+        page_num = 1
+        for i in range(0, len(items), labels_per_page):
+            page_items = items[i:i + labels_per_page]
+            
+            # 각 페이지를 개별 파일로 생성
+            page_name = f"통합_라벨_페이지_{page_num}"
+            if self.create_label_page(page_items, page_name, barcode_images, output_dir):
+                pages_created.append(f"{page_name}_label.docx")
+                print(f"페이지 {page_num} 생성 완료 ({len(page_items)}개 라벨)")
+            
+            page_num += 1
+        
+        # 생성된 페이지들을 하나의 문서로 합치기
+        if pages_created:
+            try:
+                # 첫 번째 문서를 기본으로 사용
+                first_page_path = os.path.join(output_dir, pages_created[0])
+                combined_doc = Document(first_page_path)
+                
+                # 나머지 페이지들을 추가
+                for page_file in pages_created[1:]:
+                    page_path = os.path.join(output_dir, page_file)
+                    page_doc = Document(page_path)
+                    
+                    # 페이지 나누기 추가
+                    combined_doc.add_page_break()
+                    
+                    # 페이지의 모든 요소를 복사
+                    for element in page_doc.element.body:
+                        combined_doc.element.body.append(element)
+                
+                # 통합 문서 저장
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                combined_filename = os.path.join(output_dir, f"통합_라벨_{timestamp}.docx")
+                combined_doc.save(combined_filename)
+                
+                # 임시 페이지 파일들 삭제
+                for page_file in pages_created:
+                    try:
+                        os.remove(os.path.join(output_dir, page_file))
+                    except:
+                        pass
+                
+                print(f"통합 라벨 문서 저장 완료: {combined_filename}")
+                print(f"총 {len(items)}개 라벨이 {len(pages_created)}페이지에 생성됨")
+                
+                return 1
+                
+            except Exception as e:
+                print(f"문서 합치기 실패: {e}")
+                # 실패 시 개별 페이지 파일들은 그대로 유지
+                return len(pages_created)
+        
+        return 0
 
     def get_cell_size_mm(self, template: str) -> Tuple[float, float]:
         """
